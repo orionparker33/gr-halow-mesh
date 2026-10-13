@@ -14,7 +14,7 @@ import tempfile
 
 import numpy as np
 
-from halow_mesh.phy import decode_iq_window
+from gnuradio.halow_mesh.phy import decode_iq_window
 
 
 def reference_frames(path):
