@@ -20,7 +20,8 @@ module. It has a CRC-checked, FCS-stripped MPDU PDU output compatible with
 this project's `in` port. Wider HaLow channels need another PHY receiver.
 The MM6108 monitor radio has been validated at an 8 MHz operating width with
 a 2 MHz primary channel; its PCAP runs through the GNU Radio PCAP source and
-mesh decoder. An independent 8 MHz IQ receiver is not included.
+mesh decoder. An independent 8 MHz IQ receiver is not included. The engineering and
+validation gates for that production target are tracked in `PHY_STATUS.md`.
 
 The GRC block **HaLow / 802.11s Mesh Decode** has message input `in` and
 outputs `out` and `events`. `out` preserves the MPDU and adds a
