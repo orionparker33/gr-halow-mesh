@@ -367,7 +367,7 @@ def _unpack_mpdu(bits, sig):
     return [frame[:len(frame)-pad] for pad in range(4) if _fcs_ok(frame[:len(frame)-pad])]
 
 
-def _payload_2(x, start, sto, cfo, h, sig):
+def _payload_2(x, start, sto, cfo, h, sig, phase_mode="fit"):
     tu, cp, ts, dc = 128, 32, 160, 64
     modulation, num, den = _MCS[sig["mcs"]]
     bits_per_tone = int(np.log2(len(_constellation(modulation))))
@@ -390,8 +390,13 @@ def _payload_2(x, start, sto, cfo, h, sig):
         values[_SUB56+dc] = fft[_SUB56+dc] / h[_SUB56+dc]
         pb = _TRAVELING_2[j%14] if sig["traveling_pilots"] else pilot_bins
         pilot_values = values[pb+dc]*np.roll(_PILOT_PSI,-j)*_PILOT_POLARITY[(j+2)%len(_PILOT_POLARITY)]
-        phase_fit = np.polyfit(pb, np.angle(pilot_values*np.exp(-1j*np.polyval(phase_fit,pb))), 1)+phase_fit
-        correction = np.exp(-1j*np.polyval(phase_fit,np.arange(-dc,dc)))
+        if phase_mode == "fit":
+            phase_fit = np.polyfit(pb, np.angle(pilot_values*np.exp(-1j*np.polyval(phase_fit,pb))), 1)+phase_fit
+            correction = np.exp(-1j*np.polyval(phase_fit,np.arange(-dc,dc)))
+        elif phase_mode == "common":
+            correction = np.full(tu, np.exp(-1j*np.angle(np.sum(pilot_values))))
+        else:
+            raise ValueError("unknown pilot phase mode")
         pilot_errors.extend(pilot_values*correction[pb+dc])
         data_bins = np.array([k for k in all_bins if k not in pb])
         equalized.extend(values[data_bins+dc]*correction[data_bins+dc])
@@ -715,7 +720,16 @@ def decode_iq_window(samples, sample_rate, bandwidth_mhz, offset_hz=0,
                     if sub_payload is None or needed>payload_input_len:
                         sub_payload=_resample(values[:needed],sample_rate,4e6,sub_offset)
                         payload_input_len=needed
-                    frames=_payload_2(sub_payload,refined,sto,cfo,h,sig)
+                    frames=[]
+                    for phase_mode, timing_shift in (("fit",0), ("common",0),
+                                                     ("fit",2), ("fit",3)):
+                        try:
+                            frames=_payload_2(sub_payload,refined+timing_shift,
+                                              sto,cfo,h,sig,phase_mode)
+                        except PhyReject:
+                            continue
+                        if frames:
+                            break
                 else:
                     if full is None or needed>payload_input_len:
                         full=_resample(values[:needed],sample_rate,bandwidth_mhz*1e6,offset_hz)
