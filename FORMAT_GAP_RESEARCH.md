@@ -118,10 +118,11 @@ padding, corrupt middle delimiters and per-member FCS failures.
 MCS8/9 require 256-QAM. The code has constellation paths, but the local
 MM6108 preset TX rejects them. Generate independent MCS8/9 BCC vectors and
 check exact MPDUs over multiple widths and payload lengths. At 8 MHz MCS4/5,
-low/intermediate-gain local probes now pass FCS, but yield varies and one
-frame depends on a four-input-sample resampling phase. Resolve this with
-labelled repetitions, channel-estimate EVM, ADC clipping count, resampler
-phase, payload-bit error location and matched monitor packet counts before
+low/intermediate-gain local probes now pass FCS, but yield varies. The CLI
+aligns each input window to the channelizer's absolute sample phase, bringing
+the previously missed MCS5 frame into ordinary output. Continue with
+labelled repetitions, channel-estimate EVM, ADC clipping count,
+payload-bit error location and matched monitor packet counts before
 claiming a packet-error rate. Do not normalize away missed transmissions by
 counting only CRC-valid SIG candidates.
 
@@ -145,8 +146,8 @@ boot-only `get_throttled` bits are not a reason to block this work.
    separate typed PHY-event port and match an independent decoder.
 3. Obtain advanced LDPC and multi-antenna/MU vectors before implementing
    their code paths; validate codeword and stream stages separately.
-4. Quantify high-rate 8 MHz packet loss and resampling-phase behavior with
-   simultaneous reference capture, then run controlled impairments.
+4. Quantify high-rate 8 MHz packet loss with simultaneous reference capture,
+   then run controlled impairments.
 5. Add hardware loss counters and demonstrate sustained 10 Msps operation.
 
 Until those gates pass, publish only the measured subset in `PHY_STATUS.md`.
