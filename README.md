@@ -289,6 +289,8 @@ packet-error improvement. These results do not qualify the live path as
 lossless or establish its sensitivity. See
 [PHY_STATUS.md](PHY_STATUS.md) for the acceptance matrix and remaining work.
 
-The code is GPL-3.0-or-later; see [LICENSE](LICENSE) and
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). It is not affiliated with
-Meshtastic, which uses LoRa rather than IEEE 802.11ah.
+Project source and contributions are licensed under **GPL-3.0-or-later**;
+see [LICENSE](LICENSE). Adapted MIT-licensed source retains its upstream
+attribution and permission notice in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The project is not
+affiliated with Meshtastic, which uses LoRa rather than IEEE 802.11ah.

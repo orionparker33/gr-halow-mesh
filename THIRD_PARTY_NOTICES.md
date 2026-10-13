@@ -4,9 +4,11 @@ Portions of `python/halow_mesh/phy.py` are adapted from Daniel Estévez's
 [IEEE 802.11ah analysis notebook](https://github.com/daniestevez/jupyter_notebooks/tree/master/IEEE_802.11ah),
 including the 2 MHz training sequences, pilot sequence, synchronization,
 interleaver, convolutional decoder, scrambler, and FCS algorithms. His
-[repository](https://github.com/daniestevez/jupyter_notebooks) licenses source
-code under the MIT License. The 4/8 MHz receiver, bounded GNU Radio block,
-and integration are Atlas work.
+[repository](https://github.com/daniestevez/jupyter_notebooks) explicitly
+licenses source code under its [MIT license](https://github.com/daniestevez/jupyter_notebooks/blob/master/LICENSE-MIT);
+its separate CC BY 4.0 license covers data. No notebook data is redistributed
+here. The 4/8 MHz receiver, bounded GNU Radio block, and integration are Atlas
+work.
 
 The MIT License permission notice for the adapted software follows:
 
