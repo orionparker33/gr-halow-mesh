@@ -4,7 +4,9 @@
 8 MHz, with the verified MPDU sent to this project's 802.11s MAC parser.
 **Current result:** the four widths work on real Pi 5 captures in the modes
 listed below. The receiver is suitable for offline analysis of those measured
-modes. It is not yet a complete standards-conformant, real-time PHY receiver.
+modes. The 1, 2, and 4 MHz paths do not yet meet a production acceptance gate:
+4 MHz high-MCS recovery is inconsistent, and live source loss is not observable
+end to end. This is not a complete standards-conformant, real-time PHY receiver.
 
 ## What the receiver does
 
@@ -29,9 +31,9 @@ modes. It is not yet a complete standards-conformant, real-time PHY receiver.
 
 | Width | FCS-verified from independent HackRF IQ | Remaining local evidence |
 | --- | --- | --- |
-| 1 MHz | MCS0–7 and MCS10 broadcast probes | All nine modes passed FCS in one bounded local matrix; repeatability and long payloads remain unmeasured. |
-| 2 MHz | MCS0–7 broadcast probes; MCS1 short-GI probes; published S1G_SHORT and S1G_LONG frames | A bounded timing search recovered every previously failed MCS2/4/5/6/7 target from the original matrix IQ. Short GI passed for two independently captured probes in one five-send trial. The published S1G_LONG path matched 55 reference MPDUs. |
-| 4 MHz | MCS0–7 probes | All eight modes passed FCS in one bounded local matrix; repeatability and impairment tolerance remain unmeasured. |
+| 1 MHz | MCS0–7 and MCS10 broadcast probes | Three exact-body, FCS-valid probes per MCS (27/27). Separate 480-byte MCS0/MCS10 MPDUs passed 6/6 with exact content. |
+| 2 MHz | MCS0–7 broadcast probes; MCS1 short-GI probes; published S1G_SHORT and S1G_LONG frames | Three exact-body, FCS-valid probes per MCS (24/24); separate 480-byte MCS0/MCS7 MPDUs passed 6/6. Public IQ/PCAP matched 116/116, including 55 S1G_LONG frames. Short GI remains partly measured. |
+| 4 MHz | MCS0–7 probes; 480-byte MCS0 data | A three-send matrix recovered 19/24 probes. Correct six-pilot rotation with a bounded phase-fit/common fallback recovered 21/24 in a separate centered-channel replay, but high-MCS loss persists. A 480-byte MCS0 trial passed 3/3 after the pilot correction; 480-byte MCS7 passed 0/3. This width is not accepted as production reliable. |
 | 8 MHz | MCS0–7 probes; MCS0 mesh data | A 30-probe, non-clipping 916 MHz MCS4/5 capture contained 30/30 CRC-valid SIGs, while the unchanged decoder recovered 1/15 MCS4 and 8/15 MCS5 FCS-valid MPDUs. High-rate reliability remains unaccepted. The local TX tool rejects MCS8/9. |
 
 A synchronous private HackRF/MM6108 capture pair had 14 overlapping 8 MHz
@@ -43,6 +45,20 @@ The verified broadcast probe frames at 1/2/4/8 MHz matched
 the preset body after accounting for the sequence number assigned by the TX
 MAC. A valid SIG alone is never published as an MPDU.
 
+The 1/2/4 MHz repeatability capture is private case
+`halow-124-repeat-20261013T172706Z`. All 25 local three-send calls completed;
+all recovered probes matched the rendered bodies after excluding the
+transmitter-assigned sequence number and FCS. The selected 2 MHz channel also
+contained 18 separate FCS-valid mesh beacons in the 20-second analysis window.
+In the 4 MHz misses, transmitted bursts were visible; several had CRC-valid
+SIG but no FCS-valid payload, with no ADC clipping at the original 8/8 dB
+receiver gains. A 16/8 dB gain trial clipped about 24% of active burst samples
+and yielded 0/9 MCS4–6 MPDUs. An 8/14 dB trial clipped about 1% and yielded
+5/9; an 8/10 dB trial clipped about 0.05% and yielded 2/9. Centering HackRF
+on the 4 MHz channel yielded 20/24 before the pilot correction and 21/24
+after it. Neither gain nor centering closes the gap. The separate 480-byte
+trial is private case `halow-long-20261013T173601Z`.
+
 A separately published 2 MHz IQ recording by Daniel Estévez provided an
 additional external check. The first two seconds yielded 116 FCS-valid MPDUs,
 including 55 S1G_LONG frames; all 116 matched exact bytes in the author's
@@ -50,7 +66,10 @@ published decoded PCAP. Run
 `tests/validate_public_iq.py` against the author's extracted ci16_le SigMF
 data and PCAP to repeat this test. The two reference files are linked below
 and are not included in this repository. The GNU Radio complex-stream block
-also produced 115 exact matches. A private 8 MHz MCS7 frame crossing a 50 ms
+produced all 116 exact matches when the finite recording was drained with
+100 ms of zero-valued samples. Without that drain, its final partial window
+lost one 109-byte PPDU starting at 1.994 seconds during graph shutdown; the
+underlying IQ decoder recovered it. A private 8 MHz MCS7 frame crossing a 50 ms
 stream-window edge was emitted once at the correct sample offset. At 1 Msps,
 the stream block recovered all nine 1 MHz MCS0–7/10 probes once in 0.881
 seconds for four seconds of recorded channelized IQ. At 4 Msps, it recovered
@@ -101,6 +120,12 @@ device identifiers are stored only in restricted Atlas run directories.
    Evidence case: `halow-mcs45-length-20261013T170948Z` (private IQ).
    The previous 2 MHz MCS2/4/5/6/7 failure was an STF timing
    alias and is resolved on the original IQ.
+   At 4 MHz, the former wideband path ignored the rotating pilot signs and
+   per-symbol pilot phase slope. The corrected path recovers three exact
+   480-byte MCS0 frames and one additional short probe in the centered replay.
+   It still loses MCS4–6 short probes and all three 480-byte MCS7 sends on
+   this local link. Obtain a stronger, independently monitored 4 MHz fixture
+   and labelled high-MCS waveforms before setting a production SNR/PER gate.
 3. Add wider `S1G_LONG`, LDPC, NDP, multi-stream, and 16 MHz only when the receiver
    implementation and independent test source actually support them. These
    are not silently accepted through fallback metadata.
