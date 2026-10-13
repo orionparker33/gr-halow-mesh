@@ -4,9 +4,10 @@
 8 MHz, with the verified MPDU sent to this project's 802.11s MAC parser.
 **Current result:** the four widths work on real Pi 5 captures in the modes
 listed below. The receiver is suitable for offline analysis of those measured
-modes. The 1, 2, and 4 MHz paths do not yet meet a production acceptance gate:
-4 MHz high-MCS recovery is inconsistent, and live source loss is not observable
-end to end. This is not a complete standards-conformant, real-time PHY receiver.
+modes. None of the four widths yet meets a production acceptance gate:
+4/8 MHz high-MCS recovery is inconsistent, 2 MHz stream replay is slower than
+real time on a long-frame case, and live source loss is not observable end to
+end. This is not a complete standards-conformant, real-time PHY receiver.
 
 ## What the receiver does
 
@@ -34,7 +35,7 @@ end to end. This is not a complete standards-conformant, real-time PHY receiver.
 | 1 MHz | MCS0–7 and MCS10 broadcast probes | Three exact-body, FCS-valid probes per MCS (27/27). Separate 480-byte MCS0/MCS10 MPDUs passed 6/6 with exact content. |
 | 2 MHz | MCS0–7 broadcast probes; MCS1 short-GI probes; published S1G_SHORT and S1G_LONG frames | Three exact-body, FCS-valid probes per MCS (24/24); separate 480-byte MCS0/MCS7 MPDUs passed 6/6. Public IQ/PCAP matched 116/116, including 55 S1G_LONG frames. Short GI remains partly measured. |
 | 4 MHz | MCS0–7 probes; 480-byte MCS0 data | A three-send matrix recovered 19/24 probes. Correct six-pilot rotation with a bounded phase-fit/common fallback recovered 21/24 in a separate centered-channel replay, but high-MCS loss persists. A 480-byte MCS0 trial passed 3/3 after the pilot correction; 480-byte MCS7 passed 0/3. This width is not accepted as production reliable. |
-| 8 MHz | MCS0–7 probes; MCS0 mesh data | A 30-probe, non-clipping 916 MHz MCS4/5 capture contained 30/30 CRC-valid SIGs, while the unchanged decoder recovered 1/15 MCS4 and 8/15 MCS5 FCS-valid MPDUs. High-rate reliability remains unaccepted. The local TX tool rejects MCS8/9. |
+| 8 MHz | MCS0–7 probes; MCS0 mesh data and 480-byte data | A 12 Msps three-send matrix recovered 20/24 exact-body, FCS-valid short probes after the STF-stride and eight-pilot fixes: MCS0/1/2/3/6/7 each 3/3; MCS4 and MCS5 each 1/3. Separate 480-byte MCS0 frames passed 3/3; MCS7 passed 0/3. An earlier 30-probe MCS4/5 recording still gives 1/15 and 8/15. High-rate reliability remains unaccepted; local TX rejects MCS8/9. |
 
 A synchronous private HackRF/MM6108 capture pair had 14 overlapping 8 MHz
 MCS0 data frames and seven overlapping 2 MHz MCS0 beacons. Every one of those
@@ -74,6 +75,30 @@ recovered a frame otherwise lost with the default eight-candidate cap. The
 published 2 MHz IQ/PCAP check still matched 116/116 offline and stream after
 this change. At exactly 2 Msps, a power tie-breaker also recovered 6/6 in
 19.1 graph seconds. The 2 and 4 MHz stream timings do not meet live rate.
+
+The 8 MHz acceptance runs are private cases
+`halow-8m-widefilter-20261013T175854Z`,
+`halow-8m-matrix-20261013T180056Z`, and
+`halow-8m-long-20261013T180415Z`. The wider-filter trial used 20 Msps and
+a 12 MHz HackRF baseband filter; it found 11 of 12 submitted bursts, eight
+CRC-valid SIGs, and one exact-body MCS5 MPDU. A wider filter alone did not
+close the high-rate gap. The 12 Msps / 10 MHz-filter matrix initially
+decoded only 3/24 short probes because the sparse raw-STF detector chose a
+nine-sample stride: its rounded lag was three raw samples away from the 8 µs
+repetition. Choosing the most nearly integral lag within a bounded sparse
+rate and applying the rotating eight-pilot phase fit recovered 20/24, all
+with distinct transmitter sequence numbers and exact bodies. That case's
+planned long sends stopped before RF submission because its first long call
+omitted the required BSSID; its short capture and full restoration remain
+valid. The separate long run completed all six sends. Its 3/3 MCS0 recovery
+came from replacing the ambiguous data-squared BPSK phase estimator with
+pilot-based phase tracking; MCS7 remained 0/3. Best MCS7 attempts had
+161–212 incorrect body bits in 480 bytes, not just an incorrect FCS.
+Channel-weighted LLR trials did not repair them. Finite 8 MHz GNU Radio
+replays recovered 20/24 exact short probes in 3.281 graph seconds from 4.9
+seconds of IQ, and 3/3 exact long MCS0 MPDUs in 3.031 graph seconds from
+2.0 seconds of IQ. The long-frame replay is slower than the recording.
+Both runs restored the radios; no mesh service was changed.
 
 A separately published 2 MHz IQ recording by Daniel Estévez provided an
 additional external check. The first two seconds yielded 116 FCS-valid MPDUs,
@@ -122,7 +147,8 @@ device identifiers are stored only in restricted Atlas run directories.
    burst windows. Only 1/15 MCS4 and 8/15 MCS5 MPDUs passed FCS. Several
    MCS5 failures had the expected body but errors in the final FCS bytes.
    Pilot phase, soft-bit weighting, Viterbi endpoint, and LTF diagnostic
-   variants did not improve recovery. The run wrapper timed out while waiting
+   variants did not improve recovery on this recording. The current eight-pilot
+   phase correction retains the same 1/15 and 8/15 results. The run wrapper timed out while waiting
    for its nominal 30-second recording; the 25.218-second file is sufficient
    for the 30 probes but not a 30-second capture benchmark. Resolve this
    high-rate loss with labelled waveforms and quantified error analysis.
@@ -134,6 +160,12 @@ device identifiers are stored only in restricted Atlas run directories.
    burst window clipped. This further limits high-rate acceptance but does
    not by itself separate transmitter quality from receiver error.
    Evidence case: `halow-mcs45-length-20261013T170948Z` (private IQ).
+   A 12 Msps / 10 MHz-filter repeat recovered only 1/3 MCS4 and 1/3 MCS5
+   short probes despite 3/3 at each of MCS6 and MCS7; its 480-byte MCS7
+   sends failed 0/3 while MCS0 passed 3/3. These rates cannot be accepted
+   from a successful single probe per MCS. Quantify PER on a labelled,
+   independently monitored channel and separate transmitter quality from
+   receiver error before changing the acceptance status.
    The previous 2 MHz MCS2/4/5/6/7 failure was an STF timing
    alias and is resolved on the original IQ.
    At 4 MHz, the former wideband path ignored the rotating pilot signs and
@@ -174,6 +206,12 @@ device identifiers are stored only in restricted Atlas run directories.
    and monitor frame count changed enough to invalidate a gain comparison.
    Neither run establishes a controlled packet-error rate or live losslessness.
 
+The raw-STF stride selection now preserves an integer 8 µs lag at 12 Msps;
+the corresponding synthetic regression passed. The previous 30-second
+10 Msps mesh recording still decodes the same 58 MCS0 MPDUs at identical
+offsets, and the previous 30-probe MCS4/5 file retains its 9/30 result.
+These file checks do not instrument sample loss at the live SDR source.
+
 ## Format-gap research and acceptance path
 
 | Gap | What the format requires | Current evidence and next acceptance gate |
@@ -208,4 +246,5 @@ resampling phase, resolving the separate MCS5 window-phase miss.
 - [gr-ieee802-11ah](https://github.com/irongiant33/gr-ieee802-11ah) is a GPL-3.0-or-later 1 MHz implementation used to cross-check S1G_1M LTF and SIG repetition/interleaving.
 - [Format-gap research](FORMAT_GAP_RESEARCH.md) identifies independently usable vector sources, separates NDP MAC from sounding NDP, and defines acceptance tests for each open format through 8 MHz.
 - The [IEEE TGah specification framework](https://ie.u-ryukyu.ac.jp/~wada/system15/11-11-1137-15-00ah-specification-framework-for-tgah%20(2).pdf) and [Keysight 802.11ah signal configuration](https://helpfiles.keysight.com/csg/n7617b/Content/Main/802.11ah%20Signal%20Configuration.htm) describe format and width choices.
+- [The 802.11ah pilot-sequence patent](https://patents.google.com/patent/DE112012004319T5/en) documents the nested eight-pilot base pattern used to cross-check the wider-channel phase correction; FCS-valid local IQ supplies the implementation check.
 - See `THIRD_PARTY_NOTICES.md` for software attribution and license terms.
