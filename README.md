@@ -189,7 +189,16 @@ was also checked against all 58 frames, but is not needed for this offline
 rate. A GNU Radio complex-file replay of the same 30-second IQ took 14.0
 seconds and emitted the same 58 MPDUs byte for byte after wideband candidate
 ranking. This does not establish lossless live capture: the stream block
-still decodes in its work thread and exposes no hardware drop counter. See
+still decodes in its work thread and exposes no structured hardware drop
+counter. A bounded live HackRF/OsmoSDR run with the source's default ring
+reported 38 overflow markers; a repeat with `hackrf=0,buffers=512` reported
+zero and captured 299.5 million complex samples in 30 seconds. That repeat
+emitted 55 FCS-valid MPDUs, all 55 exact independent MM6108 monitor matches,
+while the monitor saw 59 data MPDUs in the graph interval. A further live
+trial also had zero overflow markers, but the RF signal and independent
+monitor count changed substantially, so it cannot establish a gain or
+packet-error improvement. These results do not qualify the live path as
+lossless or establish its sensitivity. See
 [PHY_STATUS.md](PHY_STATUS.md) for the acceptance matrix and remaining work.
 
 The code is GPL-3.0-or-later; see [LICENSE](LICENSE) and
