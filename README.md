@@ -56,9 +56,17 @@ The CLI scans bounded candidate windows; it does not assert that silence or a
 missing frame means an idle channel. A recorded sample clock and center
 frequency must be accurate enough to cover the signal. Keep raw IQ and PCAP
 from assessments private. `--pcap` creates a new mode-0600 file and refuses to
-overwrite an existing one. The optional `--stf-threshold` raises the coarse
-preamble threshold above the sensitive default of 0.75. A high threshold can
-speed up a busy recording but can miss weak packets.
+overwrite an existing one; an incomplete PCAP is removed if decoding fails.
+`--workers 0` selects up to four Pi cores for a capture with at least 128
+coarse candidates; `--workers 1` gives a serial comparison. Candidate windows
+retain up to 200 ms of IQ at 2/4/8 MHz, or 30 ms at 1 MHz by default;
+`--max-ppdu-ms` sets an explicit 1–200 ms bound. Payload IQ is channelized
+only after the preamble and SIG pass their checks. The optional
+`--stf-threshold` raises the coarse preamble threshold above the sensitive
+default of 0.75. A high threshold can miss weak packets. At 8 MHz,
+`--max-subband-fraction .8` can reject narrowband preamble impostors, but it
+can also miss a weak 8 MHz frame masked by strong narrowband interference;
+the default `1` leaves that filter disabled.
 
 ## GNU Radio IQ blocks
 
@@ -83,6 +91,9 @@ channels but may miss weak frames; a low candidate cap may drop frames in a
 dense window. At exactly 1 Msps for 1 MHz, or 4 Msps for 4 MHz, the block
 uses full-window detection; this avoids a frequency-shifted SDR center spur
 flooding the coarse preamble candidate list.
+At 8 MHz, when more candidates occur than the configured cap, the block
+prefers candidates whose short spectrum fills the wide channel. This ranking
+does not replace SIG CRC or MPDU FCS.
 It decodes inside the GNU Radio work thread and has no hardware-overrun
 detection or sustained real-time guarantee.
 
@@ -152,11 +163,11 @@ probe; this is one bounded trial, not a packet-error-rate measurement.
 
 At 8 MHz, an initially all-fail MCS4/5 run clipped about 66% of active IQ
 samples. A repeat at zero receiver gain recovered one FCS-valid MCS4 and one
-MCS5 probe. At intermediate gain, a bounded fallback FFT timing search in
-the ordinary CLI recovered another MCS4 and one MCS5. A second MCS5 frame
-passed FCS only when its raw input window moved four samples. All recovered
-bodies matched the rendered presets. The remaining CRC-valid probes failed
-FCS, so measured packet-loss performance is still incomplete. The local TX tool rejects
+MCS5 probe. At intermediate gain, the ordinary CLI recovered one MCS4 and two
+MCS5 frames after input resampling phase was aligned to the absolute sample
+offset. All recovered bodies matched the rendered presets. Three of six
+submitted intermediate-gain probes still failed FCS, so packet-loss
+performance is not accepted. The local TX tool rejects
 MCS8/9, so those are not over-air validated. The first two seconds of
 Daniel Estévez's separately published 2 MHz IQ recording yielded 116
 FCS-valid MPDUs, including 55 `S1G_LONG` frames; all 116 exactly matched the
@@ -168,13 +179,17 @@ stream block recovered all nine real 1 MHz MCS0–7/10 probes and all eight
 mesh events from two seconds of the synchronized local recording.
 `tests/validate_public_iq.py` repeats the offline comparison when
 given the author's extracted ci16_le SigMF data and PCAP; neither is bundled.
-On this Pi 5, a 4.2-second local 8 MHz MCS matrix took 3.4 seconds to scan
-at the default threshold and 1.9 seconds with `--stf-threshold .98`. A busy
-one-second mesh recording took 4.2 and 1.3 seconds respectively. These are
-offline measurements, not a sustained real-time guarantee. The optimized
-stream graph processed the 4.168-second 8 MHz MCS matrix in 4.14 seconds on
-this Pi and recovered all six verified frames at the default raw-preamble
-threshold. This does not establish lossless live capture. See
+In a 30-second synchronized 8 MHz mesh capture, the sensitive default CLI
+recovered 58 of 58 monitor-referenced data MPDUs with exact bytes and no
+additional frames; the same IQ yielded 30 of 30 monitor beacons at 2 MHz.
+With four Pi 5 workers, 30 seconds of 8 MHz IQ took 17.2 seconds offline
+after loading only the needed preamble and payload slices. The older
+single-core path took 50.6 seconds. A separate optional narrowband filter
+was also checked against all 58 frames, but is not needed for this offline
+rate. A GNU Radio complex-file replay of the same 30-second IQ took 14.0
+seconds and emitted the same 58 MPDUs byte for byte after wideband candidate
+ranking. This does not establish lossless live capture: the stream block
+still decodes in its work thread and exposes no hardware drop counter. See
 [PHY_STATUS.md](PHY_STATUS.md) for the acceptance matrix and remaining work.
 
 The code is GPL-3.0-or-later; see [LICENSE](LICENSE) and
