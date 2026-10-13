@@ -67,11 +67,13 @@ def main():
     parser.add_argument("pcap", help="published 802_11_ah.pcap reference")
     parser.add_argument("--seconds", type=float, default=2.0)
     parser.add_argument("--min-frames", type=int, default=20)
+    parser.add_argument("--min-long-frames", type=int, default=10,
+                        help="require S1G_LONG frames from the public IQ (default: 10)")
     parser.add_argument("--stream", action="store_true",
                         help="also validate the GNU Radio complex stream block")
     args = parser.parse_args()
     rate = 3_840_000
-    iq = np.memmap(args.iq, dtype="<i2")
+    iq = np.memmap(args.iq, dtype="<i2", mode="r")
     if len(iq) % 2:
         parser.error("truncated I/Q pair")
     iq = iq.reshape(-1, 2)
@@ -82,6 +84,7 @@ def main():
     seen = set()
     matched = 0
     decoded = 0
+    long_frames = 0
     for pos in range(0, last - round(.01 * rate), round(.05 * rate)):
         end = min(last, pos + round(.06 * rate))
         if end - pos < round(.01 * rate):
@@ -95,8 +98,10 @@ def main():
             seen.add(key)
             decoded += 1
             matched += frame.mpdu in refs
-    print(f"decoded={decoded} exact_pcap_matches={matched} reference_records={len(refs)}")
-    if decoded < args.min_frames or matched != decoded:
+            long_frames += frame.ppdu_format == "S1G_LONG"
+    print(f"decoded={decoded} long_frames={long_frames} "
+          f"exact_pcap_matches={matched} reference_records={len(refs)}")
+    if decoded < args.min_frames or long_frames < args.min_long_frames or matched != decoded:
         raise SystemExit(1)
     if args.stream:
         frames = stream_frames(iq, last, rate)
