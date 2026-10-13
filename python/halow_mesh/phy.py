@@ -14,6 +14,7 @@ from __future__ import annotations
 import binascii
 from dataclasses import dataclass
 from fractions import Fraction
+from math import lcm
 
 import numpy as np
 from scipy.signal import find_peaks, resample_poly
@@ -617,6 +618,53 @@ def _resample(samples, sample_rate, output_rate, offset_hz):
     return resample_poly(shifted,ratio.numerator,ratio.denominator)
 
 
+def _complex_iq(samples):
+    """Convert only the IQ slice currently needed by the receiver."""
+    if samples.ndim == 2:
+        values = samples.astype(np.float32)
+        return values[:, 0]+1j*values[:, 1]
+    return samples
+
+
+_SPECTRAL_TAPER = np.hanning(2048)
+
+
+def subband_power_fraction(samples, candidate, sample_rate):
+    """Largest 2 MHz power share in a short IQ window after a raw candidate.
+
+    Used only to rank or optionally filter 8 MHz preamble candidates. It is
+    not a packet-validity test; SIG CRC and MPDU FCS remain mandatory. Return
+    None when the window is incomplete so callers can retain the candidate.
+    """
+    begin = candidate+round(sample_rate*10e-6)
+    end = begin+len(_SPECTRAL_TAPER)
+    if begin < 0 or end > len(samples):
+        return None
+    iq = _complex_iq(np.asarray(samples[begin:end]))
+    spectrum = np.abs(np.fft.fft(iq*_SPECTRAL_TAPER))**2
+    bins = max(1, min(len(spectrum), round(2e6*len(spectrum)/sample_rate)))
+    cumulative = np.concatenate(([0.], np.cumsum(spectrum)))
+    total = cumulative[-1]
+    return float(np.max(cumulative[bins:]-cumulative[:-bins])/total) if total else 0.0
+
+
+def resample_phase_period(sample_rate, bandwidth_mhz):
+    """Input-sample period that preserves every channelizer's output lattice.
+
+    A bounded window beginning at a different input phase can change the
+    fractional positions returned by ``resample_poly``. Callers with a known
+    absolute sample offset should align window starts to this period before
+    decoding; the PHY still requires SIG CRC and MPDU FCS.
+    """
+    if not np.isfinite(sample_rate) or sample_rate <= 0 or bandwidth_mhz not in (1,2,4,8):
+        raise ValueError("invalid sample rate or S1G width")
+    rates = [1e6] if bandwidth_mhz == 1 else [4e6]
+    if bandwidth_mhz > 2:
+        rates.append(bandwidth_mhz*1e6)
+    return lcm(*(Fraction(rate/sample_rate).limit_denominator(1000).denominator
+                 for rate in rates))
+
+
 def _candidates(x, threshold=.75):
     # Sliding STF autocorrelation over two long-GI symbols, normalized by
     # instantaneous power. The SIG CRC and MPDU FCS are final discriminators.
@@ -670,7 +718,8 @@ def detect_stf_raw(samples, sample_rate, threshold=.75):
 
 
 def decode_iq_window(samples, sample_rate, bandwidth_mhz, offset_hz=0,
-                     max_candidates=32, search_duration=None):
+                     max_candidates=32, search_duration=None,
+                     candidate_hint=None):
     """Decode FCS-checked single-stream BCC MPDUs from bounded complex IQ.
 
     ``samples`` may be complex64/complex128 or Nx2 signed-byte I/Q. The input
@@ -686,28 +735,40 @@ def decode_iq_window(samples, sample_rate, bandwidth_mhz, offset_hz=0,
     if sample_rate < bandwidth_mhz*1e6 or abs(offset_hz)+bandwidth_mhz*0.5e6 > sample_rate*0.5:
         raise ValueError("channel exceeds sample-rate Nyquist span")
     values=np.asarray(samples)
-    if values.ndim==2 and values.shape[1]==2:
-        if values.dtype==np.uint8:
-            values=values.view(np.int8)
-        values=values.astype(np.float32)
-        values=values[:,0]+1j*values[:,1]
-    if values.ndim!=1 or not np.iscomplexobj(values):
+    if values.ndim==2 and values.shape[1]==2 and values.dtype==np.uint8:
+        values=values.view(np.int8)
+    if not ((values.ndim==2 and values.shape[1]==2 and values.dtype==np.int8) or
+            (values.ndim==1 and np.iscomplexobj(values))):
         raise ValueError("samples must be complex IQ or Nx2 signed I/Q")
     if len(values) < sample_rate*0.001:
         raise ValueError("window must contain at least 1 ms of IQ")
     if search_duration is not None and not .001<=search_duration<=len(values)/sample_rate:
         raise ValueError("search_duration must fit inside the IQ window")
-    values=values-np.mean(values)
+    if candidate_hint is not None and (not np.isfinite(candidate_hint) or
+                                       not 0 <= candidate_hint < len(values)):
+        raise ValueError("candidate_hint must be a sample index inside the IQ window")
     if bandwidth_mhz==1:
-        return _decode_1mhz_window(values,sample_rate,offset_hz,max_candidates,search_duration)
+        converted=_complex_iq(values)
+        return _decode_1mhz_window(converted-np.mean(converted),sample_rate,
+                                   offset_hz,max_candidates,search_duration)
     if bandwidth_mhz==2:
         sub_offset=offset_hz
     else:
         sub_offset=offset_hz+1e6
     search_input=values if search_duration is None else values[:min(len(values),round((search_duration+.001)*sample_rate))]
+    search_input=_complex_iq(search_input)
+    dc=np.mean(search_input)
+    search_input=search_input-dc
     sub=_resample(search_input,sample_rate,4e6,sub_offset)
     search_end=len(sub) if search_duration is None else min(len(sub),round(search_duration*4e6))
     peaks,score=_candidates(sub[:search_end])
+    if candidate_hint is not None:
+        # The raw STF detector already gives a local PPDU location. A strong
+        # periodic interferer can have a higher normalized score than the
+        # actual preamble, exhausting a small candidate budget first. Keep
+        # the score as a tie breaker and require SIG CRC plus MPDU FCS.
+        hint=round(candidate_hint*4e6/sample_rate)
+        peaks.sort(key=lambda p:(abs(p-hint),-score[p]))
     full=None
     sub_payload=None
     payload_input_len=0
@@ -742,7 +803,8 @@ def decode_iq_window(samples, sample_rate, bandwidth_mhz, offset_hz=0,
                 needed=_payload_input_end(refined,sig,bandwidth_mhz,sample_rate,len(values))
                 if bandwidth_mhz==2:
                     if sub_payload is None or needed>payload_input_len:
-                        sub_payload=_resample(values[:needed],sample_rate,4e6,sub_offset)
+                        sub_payload=_resample(_complex_iq(values[:needed])-dc,
+                                              sample_rate,4e6,sub_offset)
                         payload_input_len=needed
                     frames=[]
                     for phase_mode, timing_shift in (("fit",0), ("common",0),
@@ -756,7 +818,8 @@ def decode_iq_window(samples, sample_rate, bandwidth_mhz, offset_hz=0,
                             break
                 else:
                     if full is None or needed>payload_input_len:
-                        full=_resample(values[:needed],sample_rate,bandwidth_mhz*1e6,offset_hz)
+                        full=_resample(_complex_iq(values[:needed])-dc,
+                                       sample_rate,bandwidth_mhz*1e6,offset_hz)
                         payload_input_len=needed
                     frames=[]
                     timing_shifts=list(range(bandwidth_mhz,bandwidth_mhz+49,4))
