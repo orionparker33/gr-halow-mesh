@@ -167,7 +167,12 @@ MCS5 probe. At intermediate gain, the ordinary CLI recovered one MCS4 and two
 MCS5 frames after input resampling phase was aligned to the absolute sample
 offset. All recovered bodies matched the rendered presets. Three of six
 submitted intermediate-gain probes still failed FCS, so packet-loss
-performance is not accepted. The local TX tool rejects
+performance is not accepted. A longer non-clipping 916 MHz capture contained
+all 30 planned MCS4/5 preambles with CRC-valid SIGs, but the decoder recovered
+only 1/15 MCS4 and 8/15 MCS5 FCS-valid MPDUs. Several failed MCS5 payloads
+had the expected body and errors only in the FCS bytes. Pilot, channel-weight,
+and Viterbi diagnostic variants did not improve the result; the installed
+receiver was unchanged. The local TX tool rejects
 MCS8/9, so those are not over-air validated. The first two seconds of
 Daniel Estévez's separately published 2 MHz IQ recording yielded 116
 FCS-valid MPDUs, including 55 `S1G_LONG` frames; all 116 exactly matched the
