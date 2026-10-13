@@ -3,6 +3,9 @@
 """Protocol and GNU Radio message-port integration checks."""
 
 import json
+import ctypes
+import struct
+import tempfile
 import time
 import unittest
 import zlib
@@ -10,7 +13,7 @@ import zlib
 import pmt
 from gnuradio import blocks, gr
 
-from halow_mesh import decode_mpdu, mesh_decode
+from halow_mesh import decode_mpdu, iter_pcap, mesh_decode
 
 
 def beacon():
@@ -43,7 +46,14 @@ class TestMeshDecode(unittest.TestCase):
 
     def test_message_port(self):
         tb = gr.top_block()
-        packet = pmt.init_u8vector(len(beacon()), list(beacon()))
+        # The 1 MHz C++ PHY emits a PMT blob. Build the same PMT type through
+        # the Python binding rather than testing only Python u8vectors.
+        buffer = ctypes.create_string_buffer(beacon())
+        make_capsule = ctypes.pythonapi.PyCapsule_New
+        make_capsule.restype = ctypes.py_object
+        make_capsule.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
+        capsule = make_capsule(ctypes.cast(buffer, ctypes.c_void_p), None, None)
+        packet = pmt.make_blob(capsule, len(beacon()))
         source = blocks.message_strobe(pmt.cons(pmt.make_dict(), packet), 10)
         parser = mesh_decode()
         sink = blocks.message_debug()
@@ -61,6 +71,19 @@ class TestMeshDecode(unittest.TestCase):
         message = sink.get_message(0)
         event = json.loads(bytes(pmt.u8vector_elements(pmt.cdr(message))))
         self.assertEqual(event["mesh_id"], "testmesh")
+
+    def test_radiotap_pcap_adapter(self):
+        frame = beacon()
+        packet = (b"\x00\x00\x09\x00\x02\x00\x00\x00\x10" + frame +
+                  zlib.crc32(frame).to_bytes(4, "little"))
+        with tempfile.NamedTemporaryFile() as file:
+            file.write(struct.pack("<IHHIIII", 0xa1b2c3d4, 2, 4, 0, 0, 65535, 127))
+            file.write(struct.pack("<IIII", 0, 0, len(packet), len(packet)))
+            file.write(packet)
+            file.flush()
+            records = list(iter_pcap(file.name))
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0][1]["mesh_id"], "testmesh")
 
 
 if __name__ == "__main__":

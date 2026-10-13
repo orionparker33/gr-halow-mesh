@@ -63,6 +63,8 @@ def decode_mpdu(frame, *, fcs_present=False, data_pad=False, mesh_data=False):
     deliberately leaves protected payload bytes opaque.
     """
     frame = bytes(frame)
+    if len(frame) > 65535:
+        raise ValueError("oversize MPDU")
     if fcs_present:
         if len(frame) < 8:
             raise ValueError("truncated FCS frame")

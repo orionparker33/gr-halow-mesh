@@ -31,6 +31,8 @@ def iter_pcap(path, *, mesh_data=False):
             if len(data) != caplen:
                 raise ValueError("short PCAP record")
             number += 1
+            if caplen != _wirelen:
+                continue
             if linktype == 127:
                 if len(data) < 8 or data[0] != 0:
                     continue
