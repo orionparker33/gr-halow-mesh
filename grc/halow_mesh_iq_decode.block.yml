@@ -1,0 +1,33 @@
+id: halow_mesh_iq_decode
+label: HaLow S1G IQ Decode
+category: '[HaLow / Mesh]'
+flags: [python]
+parameters:
+- id: sample_rate
+  label: Sample rate (S/s)
+  dtype: real
+  default: 10000000
+- id: bandwidth_mhz
+  label: Channel width (MHz)
+  dtype: enum
+  options: ['1', '2', '4', '8']
+  option_labels: ['1 MHz', '2 MHz', '4 MHz', '8 MHz']
+  default: '8'
+- id: offset_hz
+  label: Channel offset (Hz)
+  dtype: real
+  default: 0
+- id: max_candidates
+  label: Maximum candidates per IQ PDU
+  dtype: int
+  default: 32
+inputs:
+- domain: message
+  id: in
+outputs:
+- domain: message
+  id: out
+templates:
+  imports: from gnuradio import halow_mesh
+  make: halow_mesh.iq_decode(${sample_rate}, ${bandwidth_mhz}, ${offset_hz}, ${max_candidates})
+file_format: 1

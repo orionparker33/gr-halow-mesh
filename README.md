@@ -1,58 +1,101 @@
 # gr-halow-mesh
 
-GNU Radio message blocks and PCAP adapter for receive-only analysis of IEEE
-802.11ah (Wi-Fi HaLow) and IEEE 802.11s mesh MAC frames. This is a MAC parser:
-it accepts recovered 802.11 MPDUs and emits structured mesh events. It does
-not demodulate IQ itself or decrypt protected payloads.
+Receive-only GNU Radio and Python tools for IEEE 802.11ah (Wi-Fi HaLow) IQ and
+IEEE 802.11s mesh MAC analysis. The raw-IQ receiver emits an MPDU only after
+its 802.11 FCS passes. It never transmits or decrypts protected payloads.
 
 ## Receive paths
 
 ```text
-1 MHz IQ -> gr-ieee802-11ah PHY/decode_mac -> MPDU PDU -> mesh_decode
-HaLow monitor radio -> radiotap PCAP -> pcap_source -> mesh_decode
-                                    \-> halow_mesh_pcap.py
-ordinary Wi-Fi monitor PCAP -------> halow_mesh_pcap.py
+signed-byte IQ file --> halow_iq_decode.py --> FCS-verified radiotap PCAP
+bounded IQ PDU ------> HaLow S1G IQ Decode --> HaLow / 802.11s Mesh Decode
+HaLow monitor PCAP --> HaLow / 802.11s PCAP Source --> Mesh Decode
+ordinary Wi-Fi PCAP -------------------------> halow_mesh_pcap.py
 ```
 
-The 1 MHz IQ path uses the separate
-[gr-ieee802-11ah](https://github.com/irongiant33/gr-ieee802-11ah) GNU Radio
-module. It has a CRC-checked, FCS-stripped MPDU PDU output compatible with
-this project's `in` port. Wider HaLow channels need another PHY receiver.
-The MM6108 monitor radio has been validated at an 8 MHz operating width with
-a 2 MHz primary channel; its PCAP runs through the GNU Radio PCAP source and
-mesh decoder. An independent 8 MHz IQ receiver is not included. The engineering and
-validation gates for that production target are tracked in `PHY_STATUS.md`.
+Choose **1, 2, 4, or 8 MHz** and the channel-center offset explicitly. The
+local MM6108 supports up to 8 MHz. IEEE 802.11ah also defines 16 MHz, which
+this receiver does not decode. The IQ path supports single-stream BCC
+`S1G_1M` at 1 MHz and `S1G_SHORT` at 2/4/8 MHz. The 1 MHz path includes
+MCS10 repetition. Code paths for MCS0–7 (and MCS8/9 above 1 MHz) are present;
+see [PHY_STATUS.md](PHY_STATUS.md) for independently verified combinations.
+`S1G_LONG`, LDPC, multi-stream PPDUs, and NDP are outside this IQ receiver.
+The MM6108 monitor/PCAP path can still observe formats that its firmware
+decodes. IEEE 802.11s is a MAC mesh mode, so its frames use the ordinary Wi-Fi
+PHY on their operating band.
 
-The GRC block **HaLow / 802.11s Mesh Decode** has message input `in` and
-outputs `out` and `events`. `out` preserves the MPDU and adds a
-`halow_mesh_json` UTF-8 u8vector to its metadata. `events` carries a JSON
-u8vector PDU. By default, only mesh frames are emitted. Set **Emit ordinary
-frames** to include all supported MPDUs.
+## Decode a recording
 
-The GRC block **HaLow / 802.11s PCAP Source** reads classic radiotap or raw
-802.11 PCAP once and publishes recovered MPDUs to its `out` message port.
-Connect it to the decoder's `in` port. Radiotap FCS and data-padding flags
-are carried in PDU metadata, so the decoder checks advertised FCS.
+The CLI accepts interleaved signed 8-bit I/Q (the `hackrf_transfer` `.cs8`
+format). The sample rate must cover the selected channel and offset. For a
+10 Msps recording centered at 924 MHz, examples are:
 
-## Decoded fields
+```bash
+halow_iq_decode.py capture.cs8 --sample-rate 10000000 \
+  --bandwidth-mhz 8 --offset-hz 0
+halow_iq_decode.py capture.cs8 --sample-rate 10000000 \
+  --bandwidth-mhz 1 --offset-hz -1500000
+```
 
-- S1G beacon and ordinary beacon/probe response Mesh ID (IE 114) and Mesh
-  Configuration (IE 113), including peer count and advertised capabilities.
-- Mesh peering action type and a bounded Peer Management IE summary.
-- HWMP action type and PREQ/PREP/PERR/RANN IE identifiers and lengths.
+The second command selects a 1 MHz channel centered at 922.5 MHz. Each JSON
+line reports the IQ sample offset, width, MCS, PPDU format, CFO estimate, and
+FCS result. To export a radiotap PCAP, provide the UTC time of IQ sample zero:
+
+```bash
+halow_iq_decode.py capture.cs8 --sample-rate 10000000 \
+  --bandwidth-mhz 8 --start-utc 2026-10-13T05:25:00Z \
+  --pcap verified.pcap
+halow_mesh_pcap.py verified.pcap --all
+```
+
+The CLI scans bounded candidate windows; it does not assert that silence or a
+missing frame means an idle channel. A recorded sample clock and center
+frequency must be accurate enough to cover the signal. Keep raw IQ and PCAP
+from assessments private.
+
+## GNU Radio message block
+
+The GRC block **HaLow S1G IQ Decode** accepts a bounded IQ PDU on `in` with a
+`c32vector` of complex samples or a `u8vector` of interleaved signed-byte IQ.
+Set sample rate, width, and offset in the block. An optional integer
+`sample_offset` in the input metadata is added to each emitted MPDU's offset.
+The output `out` is a u8vector MPDU PDU with `fcs_present`, `fcs_ok`, `mcs`,
+`bandwidth_mhz`, `ppdu_format`, `cfo_hz`, and `sample_offset` metadata. Connect
+it to **HaLow / 802.11s Mesh Decode**. The block expects a caller to segment
+an IQ stream into windows that contain the complete PPDU; it is a message
+block, not a continuous sample-stream source.
+
+The **HaLow / 802.11s PCAP Source** block accepts classic radiotap or raw
+802.11 PCAP and publishes recovered MPDUs to `out`. It can feed the same mesh
+decoder without SDR hardware. Radiotap FCS and data-padding flags are
+preserved in PDU metadata.
+
+## Mesh MAC output
+
+**HaLow / 802.11s Mesh Decode** accepts recovered MPDUs on `in` and emits
+annotated MPDUs on `out` and JSON event PDUs on `events`. It reports:
+
+- S1G and ordinary beacon/probe Mesh ID and Mesh Configuration elements.
+- Mesh peering and HWMP action types, with bounded IE summaries.
 - Mesh Control flags, TTL, sequence, and address extensions for unprotected
   QoS data when **Input is a mesh BSS** is explicitly enabled.
 
-QoS bit 8 is reused outside a mesh BSS. The parser therefore never treats it
-as Mesh Control Present without mesh-BSS context supplied by the caller.
-Protected data remains opaque; enabling the mesh-BSS option reports only that
-Mesh Control is indicated, not its encrypted contents. Advertisement does not
-prove peer establishment or routing success.
+QoS bit 8 is reused outside mesh BSSs. The parser does not infer mesh context
+from nearby beacons or frequency. Protected payloads stay opaque; an advertised
+Mesh ID or peer count does not prove peering or routing success.
 
-## Build
+The command-line PCAP adapter is available independently:
 
-GNU Radio 3.10, Python 3, NumPy, and SciPy are required. On Debian-based systems, install
-the GNU Radio development package and Python bindings. Build and test:
+```bash
+halow_mesh_pcap.py capture.pcap --all
+halow_mesh_pcap.py known-mesh-bss.pcap --mesh-data
+```
+
+## Build and test
+
+GNU Radio 3.10, Python 3, NumPy, SciPy, and Python development headers are
+required. The small C extension accelerates the BCC Viterbi decoder. On a
+Debian-style GNU Radio 3.10/Python 3.13 host:
 
 ```bash
 cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr/local \
@@ -62,60 +105,27 @@ ctest --test-dir build --output-on-failure
 sudo cmake --install build
 ```
 
-Change `python3.13` to the target host's Python ABI directory. CMake installs
-the block in GNU Radio's Python namespace and its YAML in the GRC block tree.
-If GRC does not discover `/usr/local/share/gnuradio/grc/blocks`, set
-`GRC_BLOCKS_PATH` to that directory **and** the system block path. Offline GRC examples are in `examples/mesh_message_demo.grc` and
-`examples/mesh_pcap_demo.grc`. Set the latter source block path to a PCAP.
-The graph runs once; the source publishes every record and then stops emitting.
+Adjust the Python ABI path for another host. GRC definitions install under
+`/usr/local/share/gnuradio/grc/blocks`. If GRC does not discover that path,
+add it to `GRC_BLOCKS_PATH` alongside the system block directory. Offline
+message and PCAP examples are in `examples/`.
+`examples/iq_message_demo.py` feeds one bounded IQ file window through the
+IQ and mesh GNU Radio message blocks.
 
-## PCAP adapter
+## Validation and limits
 
-```bash
-halow_mesh_pcap.py capture.pcap
-halow_mesh_pcap.py capture.pcap --all
-halow_mesh_pcap.py known-mesh-bss.pcap --mesh-data
-```
+On the Pi 5, real IQ yielded FCS-valid MPDUs at 1 MHz MCS0/1/10, 2 MHz
+MCS0/1, 4 MHz MCS0/3, and 8 MHz MCS0/1/2/3/6/7. Twenty-one overlapping
+2/8 MHz frames matched an independent MM6108 monitor capture byte for byte.
+The 8 MHz MCS4/5 single-shot probes had valid SIG fields but failed FCS; a
+repeat capture contained no matching target SIG amid other traffic. The local
+TX tool rejects MCS8/9, so those are not over-air validated. No production
+claim is made for unsupported formats or untested MCS/guard-interval/FEC
+combinations. The offline decoder took 6.8 seconds for one 4.2-second,
+10 Msps mixed-width 8 MHz recording on this Pi 5; sustained real-time
+operation has not been established. See [PHY_STATUS.md](PHY_STATUS.md) for the
+acceptance matrix and remaining work.
 
-The adapter accepts classic PCAP linktype 127 (radiotap) or 105 (raw 802.11),
-handles radiotap FCS and data-padding flags, and prints one JSON event per
-selected frame. Unsupported, malformed, and driver-specific NDP records are
-skipped. `--mesh-data` must only be used when the capture is known to be from
-a mesh BSS; this is not inferred from frequency or nearby beacons.
-
-## Raw-IQ development diagnostic
-
-`halow_iq_probe.py` inspects a short signed-8-bit I/Q window for cyclic-prefix
-correlation at the 32 µs S1G useful-symbol duration. Select 1, 2, 4, 8, or
-16 MHz with `--bandwidth-mhz` and optionally shift the channel center with
-`--offset-hz`; the tool filters that channel and reports the original IQ
-energy fraction it contained. It removes local DC bias and reports FFT spread
-so a narrow tone is distinguishable from wideband OFDM. For example, at 10 Msps:
-
-```bash
-halow_iq_probe.py PRIVATE_CAPTURE.cs8 --sample-rate 10000000 \
-  --bandwidth-mhz 8 \
-  --start 0.7933 --duration-ms 4
-```
-
-This is a diagnostic, **not a PHY decoder or packet detector**. A strong
-correlation and many occupied FFT bins can be caused by other OFDM signals;
-only S1G SIG and FCS validation can identify a HaLow frame. The command reads
-the requested window without changing a radio. At least 20 Msps is needed to
-inspect a centered 16 MHz channel with this tool. The local MM6108 monitor
-radio supports only 1/2/4/8 MHz, so 16 MHz analysis has no hardware reference
-here and is unverified.
-
-## Verification and scope
-
-Parser, PCAP-source, and message-port integration tests run with CTest. The GRC example
-compiles under GNU Radio 3.10. A private two-node HaLow monitor capture was
-cross-checked against TShark: the parser matched all 85 mesh-advertising S1G
-beacons and correctly withheld a mesh-data classification from 420 protected
-QoS frames without mesh-BSS context. An over-the-air 1 MHz IQ-to-MPDU run and
-independent wider-channel IQ decoding are not yet verified by this project.
-The GNU Radio PCAP-source to mesh-decoder graph yielded 85 mesh beacons from
-the first 8 MHz monitor capture and all five from a second 8 MHz capture.
-
-The code is licensed GPL-3.0-or-later; see `LICENSE`. It is not affiliated
-with the Meshtastic project, which uses LoRa rather than IEEE 802.11ah.
+The code is GPL-3.0-or-later; see [LICENSE](LICENSE) and
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). It is not affiliated with
+Meshtastic, which uses LoRa rather than IEEE 802.11ah.

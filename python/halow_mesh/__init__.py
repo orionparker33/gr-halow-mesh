@@ -4,5 +4,8 @@ from .mesh_decode import mesh_decode
 from .protocol import decode_mpdu
 from .pcap import iter_pcap
 from .pcap_source import pcap_source
+from .iq_decode import iq_decode
+from .phy import decode_iq_window, RecoveredFrame
 
-__all__ = ["mesh_decode", "pcap_source", "decode_mpdu", "iter_pcap"]
+__all__ = ["mesh_decode", "pcap_source", "iq_decode", "decode_iq_window",
+           "RecoveredFrame", "decode_mpdu", "iter_pcap"]
