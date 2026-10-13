@@ -32,7 +32,10 @@ def main():
     samples = raw.reshape(-1, 2)[first:first + count]
     if len(samples) != count:
         parser.error("requested window exceeds capture")
-    result = inspect_iq(samples, args.sample_rate, args.bandwidth_mhz, args.offset_hz)
+    try:
+        result = inspect_iq(samples, args.sample_rate, args.bandwidth_mhz, args.offset_hz)
+    except ValueError as exc:
+        parser.error(str(exc))
     result["peak_seconds"] = round((first + result["sample_offset"]) / args.sample_rate, 7)
     print(json.dumps(result, sort_keys=True))
 
