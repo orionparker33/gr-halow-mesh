@@ -2,6 +2,7 @@
 """Small public PHY checks; private over-air vectors are verified separately."""
 
 import unittest
+import binascii
 
 import numpy as np
 
@@ -14,6 +15,22 @@ class PhyChecks(unittest.TestCase):
         frame=b"123456789"+(0xcbf43926).to_bytes(4,"little")
         self.assertTrue(phy._fcs_ok(frame))
         self.assertFalse(phy._fcs_ok(frame[:-1]+b"\x00"))
+
+    def test_aggregate_preserves_verified_member_before_bad_delimiter(self):
+        body=b"bounded-aggregate"
+        frame=body+binascii.crc32(body).to_bytes(4,"little")
+        delimiter=np.zeros(32,dtype=np.uint8)
+        for bit in range(4,16):
+            delimiter[bit]=(len(frame)>>(bit-4))&1
+        crc=phy._crc8(delimiter[:16])
+        delimiter[16:24]=np.unpackbits(np.array([crc],dtype=np.uint8))
+        delimiter[24:32]=np.unpackbits(np.array([ord("N")],dtype=np.uint8))[::-1]
+        member=np.unpackbits(np.frombuffer(frame,dtype=np.uint8)).reshape(-1,8)[:,::-1].ravel()
+        used=len(delimiter)+len(member)
+        padding=np.zeros((-used)%32,dtype=np.uint8)
+        bits=np.concatenate((np.zeros(8,dtype=np.uint8),delimiter,member,padding,
+                             np.ones(32,dtype=np.uint8)))
+        self.assertEqual(phy._unpack_mpdu(bits,{"aggregation":True}),[frame])
 
     def test_constellation_labeling(self):
         for name in ("BPSK","QPSK","16QAM","64QAM","256QAM"):
