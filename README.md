@@ -4,6 +4,42 @@ Receive-only GNU Radio and Python tools for IEEE 802.11ah (Wi-Fi HaLow) IQ and
 IEEE 802.11s mesh MAC analysis. The raw-IQ receiver emits an MPDU only after
 its 802.11 FCS passes. It never transmits or decrypts protected payloads.
 
+## Feature status and community debugging
+
+This matrix separates **demonstrated behavior** from broader acceptance.
+✅ means the specific test in that row passed; it does **not** certify a whole
+bandwidth or a production receiver. ❌ means the feature is unsupported or
+does not yet work reliably enough for the stated use. See
+[PHY_STATUS.md](PHY_STATUS.md) for methods, sample sizes, and open gates.
+
+| Feature | Status | Evidence or remaining gap |
+| --- | :---: | --- |
+| FCS-gated offline IQ-to-MPDU and radiotap PCAP output | ✅ | Only FCS-valid MPDUs are emitted. |
+| 1 MHz `S1G_1M` local MCS0–7/10 broadcast probes | ✅ | 27/27 exact-body probes; separate 480-byte MCS0/10 frames 6/6. |
+| 2 MHz `S1G_SHORT` local MCS0–7 probes | ✅ | 24/24 exact-body probes; separate 480-byte MCS0/7 frames 6/6. |
+| 2 MHz published `S1G_SHORT`/SU `S1G_LONG` IQ | ✅ | 116/116 MPDUs matched its reference PCAP offline and in finite stream replay. |
+| 8 MHz MCS0 mesh recording, offline and finite replay | ✅ | 58/58 exact matches to an independent MM6108 monitor; no extra frames in that recording. |
+| 8 MHz clean MCS4/5/7 DATA-field cross-check | ✅ | 6/6 exact-FCS cases at 30 and 484 bytes; partial PHY test, without a full RF/preamble/SIG path. |
+| 4 MHz high-MCS packet recovery | ❌ | Short probes 21/24 in one centered capture and 19/24 on a separate channel; 480-byte MCS7 0/3. |
+| 8 MHz high-MCS packet recovery | ❌ | MCS4 and MCS5 short probes each 1/3 in the 12 Msps matrix; 480-byte MCS7 0/3. |
+| Sustained lossless live SDR decoding | ❌ | Source drop accounting is absent; one bounded live run matched 55/59 independently monitored data frames. Some finite replays also run slower than real time. |
+| General short guard interval and aggregation coverage | ❌ | Limited 2 MHz short-GI and `S1G_LONG` aggregate examples pass; widths, lengths, and malformed cases remain unvalidated. |
+| Wider `S1G_LONG`, LDPC, NDP, multi-stream/STBC/MU, and 16 MHz raw IQ | ❌ | No complete IQ decode path and independent conformance evidence for these modes. |
+
+**Help wanted:** We welcome reproducible issues and pull requests, especially
+for 4/8 MHz high-MCS failures, timing/equalization/pilot tracking, and live
+source-loss accounting. The most useful fixture is a **labelled, full-PPDU
+complex-IQ recording** paired with independently verified MPDU bytes (including
+FCS), MCS, bandwidth, guard interval, sample rate, center offset, and packet
+start. Short MCS4/5 probes and roughly 480-byte MCS7 frames at 8 MHz are
+particularly valuable; a clean generated vector and an over-air recording
+would help separate PHY logic from RF or transmitter effects. Please include
+expected versus observed frame counts, software/hardware versions, and a
+minimal reproducer. `tests/validate_8mhz_data_field.py` exercises the clean
+partial-PHY cross-check after installation; it does not replace a full-PPDU
+test. Open an issue to coordinate a fixture or propose a fix, and keep private
+assessment captures, keys, and device identifiers out of public reports.
+
 ## Receive paths
 
 ```text
