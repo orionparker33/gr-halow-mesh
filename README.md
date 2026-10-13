@@ -51,7 +51,7 @@ prove peer establishment or routing success.
 
 ## Build
 
-GNU Radio 3.10 and Python 3 are required. On Debian-based systems, install
+GNU Radio 3.10, Python 3, and NumPy are required. On Debian-based systems, install
 the GNU Radio development package and Python bindings. Build and test:
 
 ```bash
@@ -82,6 +82,23 @@ handles radiotap FCS and data-padding flags, and prints one JSON event per
 selected frame. Unsupported, malformed, and driver-specific NDP records are
 skipped. `--mesh-data` must only be used when the capture is known to be from
 a mesh BSS; this is not inferred from frequency or nearby beacons.
+
+## Raw-IQ development diagnostic
+
+`halow_iq_probe.py` inspects a short signed-8-bit I/Q window for cyclic-prefix
+correlation at the 32 µs S1G useful-symbol duration. It removes local DC bias
+and reports FFT spread so a narrow tone is distinguishable from wideband OFDM.
+For example, at 10 Msps:
+
+```bash
+halow_iq_probe.py PRIVATE_CAPTURE.cs8 --sample-rate 10000000 \
+  --start 0.7933 --duration-ms 4
+```
+
+This is a diagnostic, **not a PHY decoder or packet detector**. A strong
+correlation and many occupied FFT bins can be caused by other OFDM signals;
+only S1G SIG and FCS validation can identify a HaLow frame. The command reads
+the requested window without changing a radio.
 
 ## Verification and scope
 

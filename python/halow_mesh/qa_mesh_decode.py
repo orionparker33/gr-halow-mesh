@@ -10,10 +10,12 @@ import time
 import unittest
 import zlib
 
+import numpy as np
 import pmt
 from gnuradio import blocks, gr
 
 from halow_mesh import decode_mpdu, iter_pcap, mesh_decode, pcap_source
+from halow_mesh.iq_probe import inspect_iq
 
 
 def beacon():
@@ -111,6 +113,30 @@ class TestMeshDecode(unittest.TestCase):
             self.assertEqual(sink.num_messages(), 1)
             event = json.loads(bytes(pmt.u8vector_elements(pmt.cdr(sink.get_message(0)))))
             self.assertEqual(event["mesh_id"], "testmesh")
+
+    def test_iq_probe_distinguishes_ofdm_tone_and_noise(self):
+        rng = np.random.default_rng(20261013)
+        symbols = []
+        for _ in range(8):
+            tones = np.zeros(320, complex)
+            tones[1:111] = rng.choice([-1, 1], 110)
+            tones[-110:] = rng.choice([-1, 1], 110)
+            symbol = np.fft.ifft(tones) * 600
+            symbols.append(np.r_[symbol[-80:], symbol])
+        ofdm = np.r_[np.zeros(500), *symbols, np.zeros(500)]
+        tone = np.exp(2j * np.pi * .02 * np.arange(len(ofdm))) * 30
+        noise = rng.normal(size=len(ofdm)) + 1j * rng.normal(size=len(ofdm))
+
+        def measure(signal):
+            samples = np.stack((signal.real, signal.imag), axis=1).astype(np.int8)
+            return inspect_iq(samples, 10e6)
+
+        ofdm_result, tone_result, noise_result = map(measure, (ofdm, tone, noise))
+        self.assertGreater(ofdm_result["cp_score"], .9)
+        self.assertGreater(ofdm_result["effective_fft_bins"], 100)
+        self.assertGreater(tone_result["cp_score"], .9)
+        self.assertLess(tone_result["effective_fft_bins"], 8)
+        self.assertLess(noise_result["cp_score"], .5)
 
 
 if __name__ == "__main__":
