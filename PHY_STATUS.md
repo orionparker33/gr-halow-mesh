@@ -27,7 +27,7 @@ modes. It is not yet a complete standards-conformant, real-time PHY receiver.
 
 | Width | FCS-verified from independent HackRF IQ | Remaining local evidence |
 | --- | --- | --- |
-| 1 MHz | MCS0, MCS1, MCS10 broadcast probes | Other MCS and long payloads untested. |
+| 1 MHz | MCS0–7 and MCS10 broadcast probes | All nine modes passed FCS in one bounded local matrix; repeatability and long payloads remain unmeasured. |
 | 2 MHz | MCS0 beacons, MCS1 and MCS3 probes | In a 2 MHz MCS0–7 matrix, MCS2/4/5/6/7 SIG fields decoded but their payloads failed FCS. Cause remains unresolved. |
 | 4 MHz | MCS0–7 probes | All eight modes passed FCS in one bounded local matrix; repeatability and impairment tolerance remain unmeasured. |
 | 8 MHz | MCS0/1/2/3/5/6/7 probes; MCS0 mesh data | In a ten-probe MCS4/5 repeat, all target SIG fields decoded, two MCS5 MPDUs passed FCS, and five MCS4 MPDUs did not. A gain comparison found no matching target SIG. The local TX tool rejects MCS8/9. |
@@ -45,12 +45,13 @@ all 50 matched exact bytes in the author's published decoded PCAP. Run
 `tests/validate_public_iq.py` against the author's extracted ci16_le SigMF
 data and PCAP to repeat this test. The two reference files are linked below
 and are not included in this repository. The GNU Radio complex-stream block
-also produced 50 exact matches. A private 8 MHz MCS7
-frame crossing a 50 ms stream-window edge was emitted once at the correct
-sample offset.
-The 1 MHz stream path also recovered recorded MCS1 and MCS10 probes after
-channel selection to 1 Msps. A complete 8 MHz IQ-to-mesh GNU Radio graph
-emitted four mesh events from two seconds of the synchronized capture.
+also produced 50 exact matches. A private 8 MHz MCS7 frame crossing a 50 ms
+stream-window edge was emitted once at the correct sample offset. At 1 Msps,
+the stream block recovered all nine 1 MHz MCS0–7/10 probes once in 0.881
+seconds for four seconds of recorded channelized IQ. At 4 Msps, it recovered
+all eight 4 MHz MCS0–7 probes in 3.745 seconds for 3.4 seconds of channelized
+IQ. A complete 8 MHz IQ-to-mesh graph emitted four mesh events from two
+seconds of the synchronized capture.
 
 The field captures used a 10 Msps HackRF centered at 924 MHz and a Pi 5. The
 radio was returned to PortaPack Mayhem mode, the MM6108 monitor and radiotap
@@ -66,9 +67,9 @@ device identifiers are stored only in restricted Atlas run directories.
 2. Measure packet error rate and false-alarm rate versus SNR, CFO, clock
    offset, multipath, clipping, adjacent-channel traffic, and payload size.
    Resolve the 2 MHz MCS2/4/5/6/7 payload failures and persistent 8 MHz MCS4
-   FCS failures and MCS5 loss rate with
-   a clean, independently received reference before declaring broad MCS4/5
-   performance. Two MCS5 frames are verified; MCS4 is not.
+   FCS failures and MCS5 loss rate with a clean, independently received
+   reference before declaring broad MCS4/5 performance. Two MCS5 frames are
+   verified; MCS4 is not.
 3. Add `S1G_LONG`, LDPC, NDP, multi-stream, and 16 MHz only when the receiver
    implementation and independent test source actually support them. These
    are not silently accepted through fallback metadata.
@@ -80,9 +81,11 @@ device identifiers are stored only in restricted Atlas run directories.
    been sensitivity-tested for weak frames. The GNU Radio stream block uses
    overlapping bounded windows and a raw preamble search inside its work
    thread. It processed the 4.168-second 8 MHz matrix in 4.14 seconds and
-   recovered all six verified frames. The 1 MHz path at exactly 1 Msps uses
-   full-window detection. Hardware overrun detection and lossless live flow
-   control remain unimplemented.
+   recovered all six verified frames. The 1 MHz path at exactly 1 Msps and
+   4 MHz path at exactly 4 Msps use full-window detection to avoid spurious
+   preamble candidates from a frequency-shifted SDR center spur. The 4 MHz
+   stream result above was slightly slower than recorded duration. Hardware
+   overrun detection and lossless live flow control remain unimplemented.
 
 ## Sources and provenance
 

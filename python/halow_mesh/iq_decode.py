@@ -114,7 +114,8 @@ class iq_stream_decode(gr.sync_block):
 
     def _process(self, size):
         values = self._buffer[:size]
-        if self.sample_rate < 2e6:
+        if (self.sample_rate < 2e6 or
+                (self.bandwidth_mhz == 4 and self.sample_rate <= 4e6)):
             frames = decode_iq_window(values, self.sample_rate,
                                       self.bandwidth_mhz, self.offset_hz,
                                       self.max_candidates)

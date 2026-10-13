@@ -77,7 +77,9 @@ relative to stream sample zero. Connect its `out` message port to **HaLow /
 802.11s Mesh Decode**. A raw preamble threshold and maximum candidate count
 bound the search per window. Raising the threshold reduces work on busy
 channels but may miss weak frames; a low candidate cap may drop frames in a
-dense window. At exactly 1 Msps, the 1 MHz path uses full-window detection.
+dense window. At exactly 1 Msps for 1 MHz, or 4 Msps for 4 MHz, the block
+uses full-window detection; this avoids a frequency-shifted SDR center spur
+flooding the coarse preamble candidate list.
 It decodes inside the GNU Radio work thread and has no hardware-overrun
 detection or sustained real-time guarantee.
 
@@ -135,7 +137,7 @@ after extracting the author's 3.84 Msps ci16_le data from the linked archive.
 
 ## Validation and limits
 
-On the Pi 5, real IQ yielded FCS-valid MPDUs at 1 MHz MCS0/1/10, 2 MHz
+On the Pi 5, real IQ yielded FCS-valid MPDUs at 1 MHz MCS0–7/10, 2 MHz
 MCS0/1/3, 4 MHz MCS0–7, and 8 MHz MCS0/1/2/3/5/6/7. Twenty-one overlapping
 2/8 MHz frames matched an independent MM6108 monitor capture byte for byte.
 The first 8 MHz MCS4/5 probes had valid SIG fields but failed FCS. In a
@@ -148,12 +150,11 @@ combinations. A bounded 2/4 MHz matrix gave valid SIG for all eight modes
 per width and FCS-valid 4 MHz MCS0–7, but 2 MHz MCS2/4/5/6/7 failed FCS.
 The first two seconds of Daniel Estévez's separately published 2 MHz IQ
 recording yielded 50 FCS-valid MCS1 MPDUs, all exact matches to the published
-PCAP both offline and in the GNU Radio stream graph. A separate 8 MHz MCS7 frame crossing a window edge was
-emitted once.
-In a separate real 1 MHz recording, the stream block decoded both MCS1 and
-MCS10 probe frames after selecting their channel at 1 Msps. A complete
-8 MHz IQ stream-to-mesh graph emitted four mesh events from two seconds of
-the synchronized local recording.
+PCAP both offline and in the GNU Radio stream graph. A separate 8 MHz MCS7
+frame crossing a window edge was emitted once. After channel selection, the
+stream block recovered all nine real 1 MHz MCS0–7/10 probes and all eight
+4 MHz MCS0–7 probes. A complete 8 MHz IQ stream-to-mesh graph emitted four
+mesh events from two seconds of the synchronized local recording.
 `tests/validate_public_iq.py` repeats the offline comparison when
 given the author's extracted ci16_le SigMF data and PCAP; neither is bundled.
 On this Pi 5, a 4.2-second local 8 MHz MCS matrix took 3.4 seconds to scan
