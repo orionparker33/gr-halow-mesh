@@ -29,7 +29,6 @@ PILOTS = np.array((-103, -75, -39, -11, 11, 39, 75, 103))
 PILOT_BASE = np.array((1, 1, 1, -1, -1, 1, 1, 1))
 PILOT_POLARITY = (1, 1, 1, 1, -1, -1, -1, 1)
 NFFT, CP, SYMBOL = 256, 64, 320
-FREQUENCIES = np.fft.fftshift(np.fft.fftfreq(NFFT))
 
 
 def _encoder_bits(frame, mcs):
@@ -102,11 +101,6 @@ def _qam(bits, bits_per_tone):
     return output / np.sqrt(2 * (side * side - 1) / 3)
 
 
-def _place_fft(samples, start, spectrum, correction):
-    corrected = spectrum * np.exp(-2j * np.pi * correction * FREQUENCIES)
-    samples[start:start + NFFT] = np.fft.ifft(np.fft.ifftshift(corrected))
-
-
 def _data_field_vector(frame, mcs):
     coded = _encoder_bits(frame, mcs)
     samples = np.zeros(6 * SYMBOL + len(coded) * SYMBOL + NFFT, complex)
@@ -115,15 +109,18 @@ def _data_field_vector(frame, mcs):
         ltf[center + phy._SUB56 + 128] = phy._LTF
     for tone, sign in phy._LTF_8_EXTRA.items():
         ltf[tone + 128] = sign
-    for start in (2 * SYMBOL + 96, 3 * SYMBOL + 32):
-        _place_fft(samples, start, ltf, 32)
+    ltf_time = np.fft.ifft(np.fft.ifftshift(ltf))
+    training = np.r_[ltf_time[-2 * CP:], ltf_time, ltf_time]
+    samples[2 * SYMBOL:2 * SYMBOL + len(training)] = training
     for index, row in enumerate(coded):
         spectrum = np.zeros(NFFT, complex)
         spectrum[DATA_BINS + 128] = _qam(row, MCS[mcs][0])
         # The two SIG symbols advance the simulator's pilot sequence.
         spectrum[PILOTS + 128] = (np.roll(PILOT_BASE, -index) *
                                   PILOT_POLARITY[index + 2])
-        _place_fft(samples, (6 + index) * SYMBOL + CP // 2 + 2, spectrum, 30)
+        time_symbol = np.fft.ifft(np.fft.ifftshift(spectrum))
+        start = (6 + index) * SYMBOL
+        samples[start:start + SYMBOL] = np.r_[time_symbol[-CP:], time_symbol]
     return samples, len(coded)
 
 
