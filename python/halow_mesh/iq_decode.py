@@ -5,7 +5,8 @@ import numpy as np
 import pmt
 from gnuradio import gr
 
-from .phy import decode_iq_window, detect_stf_raw
+from .phy import (decode_iq_window, detect_stf_raw, resample_phase_period,
+                  subband_power_fraction)
 
 
 def _publish_frame(block, frame, sample_offset):
@@ -65,6 +66,11 @@ class iq_decode(gr.basic_block):
             value = pmt.dict_ref(metadata, key, pmt.PMT_NIL)
             if pmt.is_integer(value):
                 offset = pmt.to_long(value)
+                period = resample_phase_period(self.sample_rate, self.bandwidth_mhz)
+                drop = (-offset) % period
+                if drop:
+                    samples = samples[drop:]
+                    offset += drop
         frames = decode_iq_window(samples, self.sample_rate, self.bandwidth_mhz,
                                   self.offset_hz, self.max_candidates)
         for frame in frames:
@@ -104,6 +110,7 @@ class iq_stream_decode(gr.sync_block):
         self._filled = 0
         self._window_start = 0
         self._seen = []
+        self._phase_period = resample_phase_period(self.sample_rate, self.bandwidth_mhz)
         self.message_port_register_out(pmt.intern("out"))
 
     def start(self):
@@ -135,15 +142,32 @@ class iq_stream_decode(gr.sync_block):
         for candidate in candidates:
             if not deduplicated or candidate-deduplicated[-1] > round(self.sample_rate*.00015):
                 deduplicated.append(candidate)
-        for candidate in deduplicated[:self.max_candidates]:
+        if self.bandwidth_mhz == 8 and len(deduplicated) > self.max_candidates:
+            # Dense narrowband traffic can place hundreds of aliased STF
+            # peaks before a valid wideband frame in one 100 ms window.
+            # Prefer candidates whose short spectrum fills the selected
+            # channel, then restore time order before publishing frames.
+            def width_rank(position):
+                fraction = subband_power_fraction(values, position,
+                                                  self.sample_rate)
+                return 1.0 if fraction is None else fraction
+
+            ranked = sorted(deduplicated, key=width_rank)
+            selected = sorted(ranked[:self.max_candidates])
+        else:
+            selected = deduplicated[:self.max_candidates]
+        for candidate in selected:
             first = max(0, candidate-round(self.sample_rate*.001))
+            aligned = first-(self._window_start+first)%self._phase_period
+            first = aligned if aligned >= 0 else aligned+self._phase_period
             last = min(size, candidate+round(self.sample_rate*.06))
             if last-first < round(self.sample_rate*.001):
                 continue
             frames = decode_iq_window(values[first:last], self.sample_rate,
                                       self.bandwidth_mhz, self.offset_hz,
                                       self.max_candidates,
-                                      search_duration=min(.003,(last-first)/self.sample_rate))
+                                      search_duration=min(.003,(last-first)/self.sample_rate),
+                                      candidate_hint=candidate-first)
             for frame in frames:
                 absolute = self._window_start + first + frame.sample_offset
                 if any(body == frame.mpdu and abs(absolute-prior) < round(self.sample_rate*.00005)
