@@ -142,15 +142,25 @@ class iq_stream_decode(gr.sync_block):
         for candidate in candidates:
             if not deduplicated or candidate-deduplicated[-1] > round(self.sample_rate*.00015):
                 deduplicated.append(candidate)
-        if self.bandwidth_mhz == 8 and len(deduplicated) > self.max_candidates:
-            # Dense narrowband traffic can place hundreds of aliased STF
-            # peaks before a valid wideband frame in one 100 ms window.
-            # Prefer candidates whose short spectrum fills the selected
-            # channel, then restore time order before publishing frames.
+        if self.bandwidth_mhz in (2, 8) and len(deduplicated) > self.max_candidates:
+            # Dense narrowband traffic or an SDR spur can place hundreds of
+            # aliased STF peaks before a real S1G frame in one window. Rank
+            # by the largest 2 MHz power share: a 2 MHz frame in a >=4 Msps
+            # stream spreads across the sampled band, while a narrow spur
+            # concentrates nearly all its power in one 2 MHz slice. Restore
+            # time order after selection. SIG CRC and MPDU FCS remain gates.
             def width_rank(position):
                 fraction = subband_power_fraction(values, position,
                                                   self.sample_rate)
-                return 1.0 if fraction is None else fraction
+                share = 1.0 if fraction is None else fraction
+                if self.bandwidth_mhz != 2:
+                    return share
+                # At exactly 2 Msps the 2 MHz slice spans the whole sampled
+                # band, so every candidate has share=1. Absolute burst power
+                # then breaks the tie in favor of a received preamble.
+                end = min(size, position + round(self.sample_rate*.00025))
+                power = float(np.mean(np.abs(values[position:end])**2)) if end > position else 0.0
+                return share, -power
 
             ranked = sorted(deduplicated, key=width_rank)
             selected = sorted(ranked[:self.max_candidates])
@@ -163,9 +173,16 @@ class iq_stream_decode(gr.sync_block):
             last = min(size, candidate+round(self.sample_rate*.06))
             if last-first < round(self.sample_rate*.001):
                 continue
+            # The coarse budget limits how many distinct raw peaks reach a
+            # window. A 2 MHz STF plateau can still yield more than eight
+            # plausible fine origins around one good raw peak. Keep a small
+            # independent fine-search floor so the raw cap does not silently
+            # discard the valid timing origin.
+            fine_candidates = (max(self.max_candidates, 16)
+                               if self.bandwidth_mhz == 2 else self.max_candidates)
             frames = decode_iq_window(values[first:last], self.sample_rate,
                                       self.bandwidth_mhz, self.offset_hz,
-                                      self.max_candidates,
+                                      fine_candidates,
                                       search_duration=min(.003,(last-first)/self.sample_rate),
                                       candidate_hint=candidate-first)
             for frame in frames:
