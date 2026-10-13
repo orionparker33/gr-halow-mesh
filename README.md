@@ -17,10 +17,11 @@ ordinary Wi-Fi PCAP -------------------------> halow_mesh_pcap.py
 Choose **1, 2, 4, or 8 MHz** and the channel-center offset explicitly. The
 local MM6108 supports up to 8 MHz. IEEE 802.11ah also defines 16 MHz, which
 this receiver does not decode. The IQ path supports single-stream BCC
-`S1G_1M` at 1 MHz and `S1G_SHORT` at 2/4/8 MHz. The 1 MHz path includes
+`S1G_1M` at 1 MHz, `S1G_SHORT` at 2/4/8 MHz, and `S1G_LONG` single-user
+frames at 2 MHz. The 1 MHz path includes
 MCS10 repetition. Code paths for MCS0–7 (and MCS8/9 above 1 MHz) are present;
 see [PHY_STATUS.md](PHY_STATUS.md) for independently verified combinations.
-`S1G_LONG`, LDPC, multi-stream PPDUs, and NDP are outside this IQ receiver.
+Wider `S1G_LONG`, LDPC, multi-stream PPDUs, and NDP are outside this IQ receiver.
 The MM6108 monitor/PCAP path can still observe formats that its firmware
 decodes. IEEE 802.11s is a MAC mesh mode, so its frames use the ordinary Wi-Fi
 PHY on their operating band.
@@ -138,19 +139,27 @@ after extracting the author's 3.84 Msps ci16_le data from the linked archive.
 ## Validation and limits
 
 On the Pi 5, real IQ yielded FCS-valid MPDUs at 1 MHz MCS0–7/10, 2 MHz
-MCS0/1/3, 4 MHz MCS0–7, and 8 MHz MCS0/1/2/3/5/6/7. Twenty-one overlapping
-2/8 MHz frames matched an independent MM6108 monitor capture byte for byte.
-The first 8 MHz MCS4/5 probes had valid SIG fields but failed FCS. In a
-bounded repeat, all ten target SIG fields appeared and two MCS5 MPDUs passed
-FCS; none of the five MCS4 MPDUs passed FCS. A later gain comparison captured
-no matching target SIG and did not settle MCS4. The local
-TX tool rejects MCS8/9, so those are not over-air validated. No production
-claim is made for unsupported formats or untested MCS/guard-interval/FEC
-combinations. A bounded 2/4 MHz matrix gave valid SIG for all eight modes
-per width and FCS-valid 4 MHz MCS0–7, but 2 MHz MCS2/4/5/6/7 failed FCS.
-The first two seconds of Daniel Estévez's separately published 2 MHz IQ
-recording yielded 50 FCS-valid MCS1 MPDUs, all exact matches to the published
-PCAP both offline and in the GNU Radio stream graph. A separate 8 MHz MCS7
+MCS0–7, 4 MHz MCS0–7, and 8 MHz MCS0–7. The prior 2 MHz
+MCS2/4/5/6/7 failures were caused by an aliased STF timing estimate; a bounded
+FCS-gated timing search recovered all five from their original IQ. Twenty-one
+overlapping 2/8 MHz frames matched an independent MM6108 monitor capture byte
+for byte. A bounded 2 MHz guard-interval trial recovered two long-GI and two
+short-GI MCS1 broadcast probes with valid FCS and the expected frame body.
+The independent HackRF receiver did not recover the third submitted short-GI
+probe; this is one bounded trial, not a packet-error-rate measurement.
+
+At 8 MHz, an initially all-fail MCS4/5 run clipped about 66% of active IQ
+samples. A repeat at zero receiver gain recovered one FCS-valid MCS4 and one
+MCS5 probe. At intermediate gain, a bounded fallback FFT timing search in
+the ordinary CLI recovered another MCS4 and one MCS5. A second MCS5 frame
+passed FCS only when its raw input window moved four samples. All recovered
+bodies matched the rendered presets. The remaining CRC-valid probes failed
+FCS, so measured packet-loss performance is still incomplete. The local TX tool rejects
+MCS8/9, so those are not over-air validated. The first two seconds of
+Daniel Estévez's separately published 2 MHz IQ recording yielded 116
+FCS-valid MPDUs, including 55 `S1G_LONG` frames; all 116 exactly matched the
+published PCAP. The GNU Radio stream graph emitted 115 exact matches from
+the same windowed recording. A separate 8 MHz MCS7
 frame crossing a window edge was emitted once. After channel selection, the
 stream block recovered all nine real 1 MHz MCS0–7/10 probes and all eight
 4 MHz MCS0–7 probes. A complete 8 MHz IQ stream-to-mesh graph emitted four
