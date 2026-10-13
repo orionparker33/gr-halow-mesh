@@ -18,11 +18,17 @@ for field research, not a substitute for the published standard.
 | [Keysight 802.11ah advanced waveform mode](https://helpfiles.keysight.com/csg/n7617b/Content/Main/802.11ah%20Waveform%20Setup.htm) | Fully channel-coded MPDUs, LDPC, MU, [NDP MAC and sounding NDP](https://helpfiles.keysight.com/csg/n7617b/Content/Main/802.11ah%20Waveform%20Setup.htm), and [multi-member A-MPDU](https://helpfiles.keysight.com/csg/n7617/Content/Main/802.11ah%20User%20Basic.htm). | Requires access to that software/instrument and exported complex IQ plus exact expected payloads. Its basic mode omits LDPC, MU and MPDU setup. Documentation alone is not a validation vector. |
 | [Estévez public 2 MHz IQ and PCAP](https://destevez.net/2025/01/decoding-ieee-802-11ah/) | Real BCC short and single-user long frames, including high MCS, traveling pilots and aggregation. | Does not cover 4/8 MHz long, NDP MAC, LDPC, spatial streams or MCS8/9. |
 | [gr-ieee802-11ah](https://github.com/irongiant33/gr-ieee802-11ah) | Independent 1 MHz MCS0/1/10 recordings and a GNU Radio 1 MHz transceiver. | Its stated scope is 1 MHz. Do not infer wider or optional-format coverage. |
+| [Milos et al. MIT-licensed 802.11ah PHY simulator](https://github.com/jirimilos/802.11ah-af-phy-sim) | An 8 MHz DATA-field coding/interleaving cross-check without WLAN Toolbox; its MCS4/5 rates, 234 data tones, 26 interleaver columns, and puncture patterns agree with this receiver. | Still needs MATLAB plus Control System, Signal Processing, DSP System, and Communications System Toolboxes. The available script uses a generic 16-bit SERVICE and does not build S1G STF/LTF/SIG or an expected FCS-bearing MPDU. It is not a complete, independently labelled PPDU vector. |
 
 For a reusable conformance corpus, preserve complex sample format/rate and
 center offset, TXVECTOR or equivalent configuration, exact expected MPDU
 bytes or NDP SIG fields, per-frame timestamp, source/version, and a cryptographic
 hash. Separate clean baseband vectors from independent over-air captures.
+The local MM6108/HackRF pair supplies independently received IQ with known
+submitted MPDUs, but it cannot certify the transmitter waveform or distinguish
+transmitter defects from receiver errors. The public `gr-halow` project currently
+describes SIG/data decoding and transmission as unfinished, so it does not close
+the 8 MHz generator gap.
 
 ## S1G_LONG, including wide single-user and multi-user
 
