@@ -432,11 +432,10 @@ def _payload_wide(x, start, cfo_hz, sig, width, phase_mode="fit"):
     centers = {4: (-32,32), 8: (-96,-32,32,96)}[width]
     active = np.array([k for k in range(-{4:58,8:122}[width], {4:59,8:123}[width]) if abs(k)>1])
     pilots = np.array({4:(-53,-25,-11,11,25,53), 8:(-103,-75,-39,-11,11,39,75,103)}[width])
-    # The six 4 MHz pilot signs rotate each data symbol. Treating them all
-    # as +1 makes their sum approach zero and gives a noisy common-phase
-    # estimate, especially over long PPDUs and at higher MCS. The 8 MHz
-    # pilot path is kept separate until its sequence is independently checked.
-    pilot_psi = np.array((1, 1, 1, -1, -1, 1)) if width == 4 else np.ones(8)
+    # The six/eight wider-channel pilot signs rotate with the DATA symbol.
+    # Their base patterns match the downclocked 40/80 MHz single-stream plans.
+    pilot_psi = (np.array((1, 1, 1, -1, -1, 1)) if width == 4 else
+                 np.array((1, 1, 1, -1, -1, 1, 1, 1)))
     data_bins = np.array([k for k in active if k not in pilots])
     modulation, num, den = _MCS[sig["mcs"]]
     bits_per_tone = int(np.log2(len(_constellation(modulation))))
@@ -475,27 +474,17 @@ def _payload_wide(x, start, cfo_hz, sig, width, phase_mode="fit"):
         fft = _fft_symbol(x, position+gi//2+offset, cfo, tu, gi//2-offset)
         position += tu+gi
         eq=fft/hfull
-        if width == 4:
-            expected = np.roll(pilot_psi,-j)*_PILOT_POLARITY[(j+2)%len(_PILOT_POLARITY)]
-            measured = eq[pilots+dc]*expected
-            if phase_mode == "fit":
-                residual = np.unwrap(np.angle(measured*np.exp(-1j*np.polyval(phase_fit,pilots))))
-                phase_fit += np.polyfit(pilots,residual,1)
-                correction = np.exp(-1j*np.polyval(phase_fit,data_bins))
-            elif phase_mode == "common":
-                correction = np.exp(-1j*np.angle(np.sum(measured)))
-            else:
-                raise ValueError("unknown pilot phase mode")
-            equalized.extend(eq[data_bins+dc]*correction)
-            continue
-        if modulation == "BPSK":
-            phase=np.angle(np.sum(eq[data_bins+dc]**2))/2
+        expected = np.roll(pilot_psi,-j)*_PILOT_POLARITY[(j+2)%len(_PILOT_POLARITY)]
+        measured = eq[pilots+dc]*expected
+        if phase_mode == "fit":
+            residual = np.unwrap(np.angle(measured*np.exp(-1j*np.polyval(phase_fit,pilots))))
+            phase_fit += np.polyfit(pilots,residual,1)
+            correction = np.exp(-1j*np.polyval(phase_fit,data_bins))
+        elif phase_mode == "common":
+            correction = np.exp(-1j*np.angle(np.sum(measured)))
         else:
-            # Pilot-assisted common phase tracking for higher constellations.
-            # The pilot signs are validated by FCS before any MPDU is emitted.
-            phase=np.angle(np.sum(eq[pilots+dc]*np.roll(pilot_psi,-j)*
-                                  _PILOT_POLARITY[(j+2)%len(_PILOT_POLARITY)]))
-        equalized.extend(eq[data_bins+dc]*np.exp(-1j*phase))
+            raise ValueError("unknown pilot phase mode")
+        equalized.extend(eq[data_bins+dc]*correction)
     soft=_soft_demap(np.asarray(equalized),modulation)
     decoded=_viterbi(_depuncture(_deinterleave(soft,len(data_bins),bits_per_tone,width),(num,den)))
     return _unpack_mpdu(_descramble(decoded[:-6]),sig)
@@ -703,6 +692,16 @@ def _candidates(x, threshold=.75):
     return sorted(peaks,key=lambda i:score[i],reverse=True),score
 
 
+def _stf_stride(sample_rate):
+    """Choose a sparse rate whose 8 us STF lag lands near an integer sample."""
+    upper = max(1, int(sample_rate/1.25e6))
+    period = sample_rate*8e-6
+    lower = max(1, upper//2)
+    return min(range(lower, upper+1),
+               key=lambda stride: (abs(round(period/stride)*stride-period),
+                                   -stride))
+
+
 def detect_stf_raw(samples, sample_rate, threshold=.75):
     """Find candidate STF starts in raw IQ without channelizing the entire file.
 
@@ -720,7 +719,7 @@ def detect_stf_raw(samples, sample_rate, threshold=.75):
         values=values[:,0]+1j*values[:,1]
     if values.ndim!=1 or not np.iscomplexobj(values):
         raise ValueError("samples must be complex IQ or Nx2 I/Q")
-    stride=max(1,int(sample_rate/1.25e6))
+    stride=_stf_stride(sample_rate)
     sparse=values[::stride]
     sparse=sparse-np.mean(sparse)
     rate=sample_rate/stride
