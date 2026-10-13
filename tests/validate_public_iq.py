@@ -9,6 +9,7 @@ is bundled with this project.
 """
 
 import argparse
+from collections import Counter
 import struct
 import tempfile
 
@@ -49,6 +50,11 @@ def stream_frames(iq, last, rate):
             pair = iq[pos:min(pos+500000,last)].astype(np.float32)
             samples = (pair[:,0]+1j*pair[:,1]).astype(np.complex64)
             converted.write(samples.tobytes())
+        # GNU Radio may stop downstream message consumers before a decoder's
+        # stop() callback publishes its final partial window. Clock a full
+        # window of silence through the live graph so end-of-file PPDUs are
+        # emitted while every consumer is still running.
+        converted.write(np.zeros(round(.1 * rate), dtype=np.complex64).tobytes())
         converted.flush()
         graph = gr.top_block()
         source = blocks.file_source(gr.sizeof_gr_complex, converted.name, False)
@@ -85,6 +91,7 @@ def main():
     matched = 0
     decoded = 0
     long_frames = 0
+    expected_frames = []
     for pos in range(0, last - round(.01 * rate), round(.05 * rate)):
         end = min(last, pos + round(.06 * rate))
         if end - pos < round(.01 * rate):
@@ -97,6 +104,7 @@ def main():
                 continue
             seen.add(key)
             decoded += 1
+            expected_frames.append(frame.mpdu)
             matched += frame.mpdu in refs
             long_frames += frame.ppdu_format == "S1G_LONG"
     print(f"decoded={decoded} long_frames={long_frames} "
@@ -107,7 +115,8 @@ def main():
         frames = stream_frames(iq, last, rate)
         stream_matched = sum(frame in refs for frame in frames)
         print(f"stream_decoded={len(frames)} stream_exact_pcap_matches={stream_matched}")
-        if len(frames) < args.min_frames or stream_matched != len(frames):
+        if (stream_matched != len(frames) or
+                Counter(frames) != Counter(expected_frames)):
             raise SystemExit(1)
 
 
