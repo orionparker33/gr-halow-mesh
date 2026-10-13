@@ -32,7 +32,7 @@ modes. It is not yet a complete standards-conformant, real-time PHY receiver.
 | 1 MHz | MCS0–7 and MCS10 broadcast probes | All nine modes passed FCS in one bounded local matrix; repeatability and long payloads remain unmeasured. |
 | 2 MHz | MCS0–7 broadcast probes; MCS1 short-GI probes; published S1G_SHORT and S1G_LONG frames | A bounded timing search recovered every previously failed MCS2/4/5/6/7 target from the original matrix IQ. Short GI passed for two independently captured probes in one five-send trial. The published S1G_LONG path matched 55 reference MPDUs. |
 | 4 MHz | MCS0–7 probes | All eight modes passed FCS in one bounded local matrix; repeatability and impairment tolerance remain unmeasured. |
-| 8 MHz | MCS0–7 probes; MCS0 mesh data | A low-gain 916 MHz trial recovered one MCS4 and one MCS5 frame. At intermediate gain the phase-aligned CLI recovered one MCS4 and two MCS5 frames, all with exact rendered bodies. Three of six submitted probes still failed FCS, so packet-loss performance remains unaccepted. The local TX tool rejects MCS8/9. |
+| 8 MHz | MCS0–7 probes; MCS0 mesh data | A 30-probe, non-clipping 916 MHz MCS4/5 capture contained 30/30 CRC-valid SIGs, while the unchanged decoder recovered 1/15 MCS4 and 8/15 MCS5 FCS-valid MPDUs. High-rate reliability remains unaccepted. The local TX tool rejects MCS8/9. |
 
 A synchronous private HackRF/MM6108 capture pair had 14 overlapping 8 MHz
 MCS0 data frames and seven overlapping 2 MHz MCS0 beacons. Every one of those
@@ -81,8 +81,18 @@ device identifiers are stored only in restricted Atlas run directories.
    LNA/VGA gain, clipping disappeared and one of three MCS4 plus one of three
    MCS5 probes passed FCS. At intermediate gain, the phase-aligned CLI
    recovered one of three MCS4 and two of three MCS5 probes. Every recovered
-   body matched the rendered preset. The remaining 3/6 misses need quantified
-   EVM and error-rate analysis. The previous 2 MHz MCS2/4/5/6/7 failure was an STF timing
+   body matched the rendered preset. A follow-up 25.218-second independent
+   IQ recording included all 30 planned bursts in its first 10 seconds, with
+   30/30 preambles and CRC-valid SIGs and no ADC clipping in the measured
+   burst windows. Only 1/15 MCS4 and 8/15 MCS5 MPDUs passed FCS. Several
+   MCS5 failures had the expected body but errors in the final FCS bytes.
+   Pilot phase, soft-bit weighting, Viterbi endpoint, and LTF diagnostic
+   variants did not improve recovery. The run wrapper timed out while waiting
+   for its nominal 30-second recording; the 25.218-second file is sufficient
+   for the 30 probes but not a 30-second capture benchmark. Resolve this
+   high-rate loss with labelled waveforms and quantified error analysis.
+   Evidence case: `halow-phy-mcs45-replicate-20261013T165828Z` (private IQ).
+   The previous 2 MHz MCS2/4/5/6/7 failure was an STF timing
    alias and is resolved on the original IQ.
 3. Add wider `S1G_LONG`, LDPC, NDP, multi-stream, and 16 MHz only when the receiver
    implementation and independent test source actually support them. These
