@@ -100,6 +100,22 @@ seconds of IQ, and 3/3 exact long MCS0 MPDUs in 3.031 graph seconds from
 2.0 seconds of IQ. The long-frame replay is slower than the recording.
 Both runs restored the radios; no mesh service was changed.
 
+An independent open-source 802.11ah PHY simulator's DATA-field algorithms
+were translated into a deterministic clean 8 MHz cross-check. The receiver
+recovered exact, FCS-valid 30-byte and 484-byte MPDUs at each of MCS4, MCS5,
+and MCS7 (six cases; `tests/validate_8mhz_data_field.py`). This exercises
+the wide DATA equalization, QAM demapping, interleaving, puncturing, and FEC
+chain at those rates. The test supplies the receiver's LTF template and does
+not generate an independent STF/SIG or pass through a radio; it cannot certify
+the complete PPDU or the local transmitter. Analysis of the stored long MCS7
+RF capture found 161–212 body-bit errors in the best normal attempts. A
+frequency-dependent correction learned from the other failed MCS7 frames in
+that capture reduced held-out bit errors but did not pass FCS; a correction
+learned from three FCS-valid short MCS7 frames in a different capture did not
+transfer. The residual error therefore depends on the RF capture or its
+receive processing, while transmitter versus receiver responsibility remains
+unresolved. Do not use this diagnostic correction as a production equalizer.
+
 A separately published 2 MHz IQ recording by Daniel Estévez provided an
 additional external check. The first two seconds yielded 116 FCS-valid MPDUs,
 including 55 S1G_LONG frames; all 116 matched exact bytes in the author's

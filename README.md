@@ -23,6 +23,9 @@ MCS10 repetition. Code paths for MCS0–7 (and MCS8/9 above 1 MHz) are present;
 see [PHY_STATUS.md](PHY_STATUS.md) for independently verified combinations and
 [FORMAT_GAP_RESEARCH.md](FORMAT_GAP_RESEARCH.md) for format-specific closure
 tests and independent vector sources.
+`tests/validate_8mhz_data_field.py` provides a reproducible clean 8 MHz
+MCS4/5/7 DATA-field cross-check at short and 484-byte lengths. It is a partial
+PHY test; full labelled 8 MHz IQ and live-loss validation remain open.
 Wider `S1G_LONG`, LDPC, multi-stream PPDUs, and NDP are outside this IQ receiver.
 The MM6108 monitor/PCAP path can still observe formats that its firmware
 decodes. IEEE 802.11s is a MAC mesh mode, so its frames use the ordinary Wi-Fi

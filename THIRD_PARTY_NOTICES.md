@@ -34,3 +34,11 @@ cross-checked against the GPL-3.0-or-later
 The repository's copyright notices credit Bastian Bloessl and its
 contributors. This project's GPL-3.0-or-later license is compatible with
 those source terms.
+
+`tests/validate_8mhz_data_field.py` translates the 8 MHz DATA-field
+scrambler, puncturing, interleaving, and Gray-QAM algorithms described by
+Jiri Milos and contributors in the MIT-licensed
+[802.11ah PHY simulator](https://github.com/jirimilos/802.11ah-af-phy-sim).
+Copyright (c) 2020 jirimilos. The same MIT permission and warranty notice
+quoted above applies to this adaptation. The synthetic test is an 8 MHz
+DATA-field cross-check; it is not a full independently captured PPDU.

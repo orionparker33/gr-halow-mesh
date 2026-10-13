@@ -44,4 +44,7 @@ if(BUILD_TESTING)
                    ${CMAKE_CURRENT_SOURCE_DIR}/python/halow_mesh/qa_phy.py)
   set_tests_properties(halow_phy_qa PROPERTIES
       ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/python")
+  add_test(NAME halow_8mhz_data_field
+           COMMAND ${PYTHON_EXECUTABLE}
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/validate_8mhz_data_field.py)
 endif()
