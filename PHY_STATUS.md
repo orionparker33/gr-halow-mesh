@@ -58,6 +58,22 @@ and yielded 0/9 MCS4–6 MPDUs. An 8/14 dB trial clipped about 1% and yielded
 on the 4 MHz channel yielded 20/24 before the pilot correction and 21/24
 after it. Neither gain nor centering closes the gap. The separate 480-byte
 trial is private case `halow-long-20261013T173601Z`.
+A further run placed the 4 MHz transmitter at 914 MHz, outside the active
+924 MHz mesh channel, and centered HackRF on 914 MHz. It recovered 19/24
+probes, including 0/3 MCS4, so overlap with the mesh channel does not explain
+the full loss. That case is `halow-4m-isolated-20261013T174303Z`.
+
+The finite GNU Radio complex-stream replay of the 480-byte case recovered
+6/6 exact 1 MHz MPDUs in 1.3 seconds of graph time, 6/6 exact 2 MHz MPDUs
+in 18.4 seconds, and the three FCS-valid 4 MHz MCS0 MPDUs in 5.3 seconds,
+from 3.7 seconds of channelized IQ per width. The 2 MHz stream needed a
+channel-occupancy ranking because one 100 ms window had 449 narrowband
+preamble candidates and the real frame was about 211th in time order. An
+independent minimum of 16 fine timing origins per selected 2 MHz raw peak
+recovered a frame otherwise lost with the default eight-candidate cap. The
+published 2 MHz IQ/PCAP check still matched 116/116 offline and stream after
+this change. At exactly 2 Msps, a power tie-breaker also recovered 6/6 in
+19.1 graph seconds. The 2 and 4 MHz stream timings do not meet live rate.
 
 A separately published 2 MHz IQ recording by Daniel Estévez provided an
 additional external check. The first two seconds yielded 116 FCS-valid MPDUs,
