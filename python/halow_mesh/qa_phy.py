@@ -49,6 +49,17 @@ class PhyChecks(unittest.TestCase):
         self.assertEqual(phy.decode_iq_window(noise,8e6,8),[])
         self.assertEqual(phy.decode_iq_window(noise,8e6,1),[])
 
+    def test_sparse_stf_stride_preserves_repetition_at_12_msps(self):
+        self.assertEqual(phy._stf_stride(12e6), 8)
+        self.assertEqual(phy._stf_stride(10e6), 8)
+        self.assertEqual(phy._stf_stride(20e6), 16)
+        rng = np.random.default_rng(80211)
+        period = (rng.normal(size=96)+1j*rng.normal(size=96)).astype(np.complex64)
+        samples = (rng.normal(size=12_000)+1j*rng.normal(size=12_000)).astype(np.complex64)
+        samples[3_000:3_000+96*12] += 20*np.tile(period, 12)
+        peaks = phy.detect_stf_raw(samples, 12e6)
+        self.assertTrue(any(3_000 <= peak < 3_000+96*12 for peak in peaks))
+
     def test_width_and_nyquist(self):
         samples=np.zeros(16000,dtype=np.complex64)
         with self.assertRaises(ValueError):
