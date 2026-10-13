@@ -96,6 +96,11 @@ prefers candidates whose short spectrum fills the wide channel. This ranking
 does not replace SIG CRC or MPDU FCS.
 It decodes inside the GNU Radio work thread and has no hardware-overrun
 detection or sustained real-time guarantee.
+For a finite complex-file replay, append at least one configured window of
+zero-valued complex samples before the graph stops. GNU Radio can stop a
+downstream message sink before this block's final partial-window `stop()`
+callback publishes its frames. The silent tail clocks those frames through
+the graph while the sink is running; it is not received RF data.
 
 The **HaLow / 802.11s PCAP Source** block accepts classic radiotap or raw
 802.11 PCAP and publishes recovered MPDUs to `out`. It can feed the same mesh
@@ -148,6 +153,8 @@ decoder; set its file path, sample rate, width, and offset before running it.
 The published-capture acceptance command is
 `python3 tests/validate_public_iq.py DATA.sigmf-data 802_11_ah.pcap --stream`
 after extracting the author's 3.84 Msps ci16_le data from the linked archive.
+The test adds a 100 ms silent tail for the finite stream and requires its
+complete MPDU multiset to equal the offline decoder's, byte for byte.
 
 ## Validation and limits
 
@@ -161,6 +168,17 @@ short-GI MCS1 broadcast probes with valid FCS and the expected frame body.
 The independent HackRF receiver did not recover the third submitted short-GI
 probe; this is one bounded trial, not a packet-error-rate measurement.
 
+A three-send-per-MCS repeat recovered 27/27 exact-body 1 MHz probes and
+24/24 exact-body 2 MHz probes. Separate 480-byte MPDUs passed 6/6 at 1 MHz
+(MCS0/MCS10) and 6/6 at 2 MHz (MCS0/MCS7). The 4 MHz repeat recovered
+19/24 short probes; moving the HackRF center onto the 4 MHz channel and
+correcting the rotating six-pilot phase reference recovered 21/24 on that
+separate capture. The correction also recovered 3/3 exact 480-byte MCS0
+frames, but 0/3 long MCS7 frames. High-MCS 4 MHz packet recovery remains
+unreliable on this local link. These results do not qualify the 1/2/4 MHz
+paths for production: format coverage, controlled impairment limits, and
+observable lossless live capture still need acceptance evidence.
+
 At 8 MHz, an initially all-fail MCS4/5 run clipped about 66% of active IQ
 samples. A repeat at zero receiver gain recovered one FCS-valid MCS4 and one
 MCS5 probe. At intermediate gain, the ordinary CLI recovered one MCS4 and two
@@ -171,13 +189,14 @@ performance is not accepted. A longer non-clipping 916 MHz capture contained
 all 30 planned MCS4/5 preambles with CRC-valid SIGs, but the decoder recovered
 only 1/15 MCS4 and 8/15 MCS5 FCS-valid MPDUs. Several failed MCS5 payloads
 had the expected body and errors only in the FCS bytes. Pilot, channel-weight,
-and Viterbi diagnostic variants did not improve the result; the installed
-receiver was unchanged. The local TX tool rejects
+and Viterbi diagnostic variants did not improve the result; the 8 MHz
+receiver path was unchanged. The local TX tool rejects
 MCS8/9, so those are not over-air validated. The first two seconds of
 Daniel Estévez's separately published 2 MHz IQ recording yielded 116
 FCS-valid MPDUs, including 55 `S1G_LONG` frames; all 116 exactly matched the
-published PCAP. The GNU Radio stream graph emitted 115 exact matches from
-the same windowed recording. A separate 8 MHz MCS7
+published PCAP. The GNU Radio stream graph emitted all 116 exact matches
+with a silent drain window. Without the drain, one PPDU at 1.994 seconds
+can be lost at graph shutdown. A separate 8 MHz MCS7
 frame crossing a window edge was emitted once. After channel selection, the
 stream block recovered all nine real 1 MHz MCS0–7/10 probes and all eight
 4 MHz MCS0–7 probes. A complete 8 MHz IQ stream-to-mesh graph emitted four
