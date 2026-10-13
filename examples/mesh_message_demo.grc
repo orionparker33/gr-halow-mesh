@@ -1,0 +1,42 @@
+options:
+  parameters:
+    author: gr-halow-mesh contributors
+    catch_exceptions: 'True'
+    category: Custom
+    description: Offline 802.11ah beacon to 802.11s mesh parser demo
+    generate_options: no_gui
+    id: halow_mesh_message_demo
+    output_language: python
+    run: 'True'
+    title: HaLow Mesh Message Demo
+  states:
+    coordinate: [8, 8]
+    state: enabled
+blocks:
+- name: blocks_message_strobe_0
+  id: blocks_message_strobe
+  parameters:
+    msg: 'pmt.cons(pmt.make_dict(), pmt.init_u8vector(34, list(bytes.fromhex("1c68000002112233445500000000007208746573746d657368710701010001010311"))))'
+    period: '100'
+  states:
+    coordinate: [80, 80]
+    state: enabled
+- name: halow_mesh_decode_0
+  id: halow_mesh_decode
+  parameters:
+    emit_all: 'False'
+  states:
+    coordinate: [360, 80]
+    state: enabled
+- name: blocks_message_debug_0
+  id: blocks_message_debug
+  parameters:
+    en_uvec: 'True'
+  states:
+    coordinate: [640, 80]
+    state: enabled
+connections:
+- [blocks_message_strobe_0, strobe, halow_mesh_decode_0, in]
+- [halow_mesh_decode_0, events, blocks_message_debug_0, print]
+metadata:
+  file_format: 1

@@ -1,0 +1,31 @@
+id: halow_mesh_decode
+label: HaLow / 802.11s Mesh Decode
+category: '[HaLow Mesh]'
+documentation: |-
+  Receive-only MAC parser. Input is a (metadata, recovered MPDU) PDU.
+  The output PDU preserves the MPDU and adds halow_mesh_json metadata.
+  The events port carries UTF-8 JSON PDUs. For 802.11ah IQ, connect a
+  compatible PHY receiver first; this block does not demodulate IQ.
+templates:
+  imports: from gnuradio import halow_mesh
+  make: halow_mesh.mesh_decode(${emit_all}, ${mesh_data})
+parameters:
+- id: emit_all
+  label: Emit ordinary frames
+  dtype: bool
+  default: 'False'
+- id: mesh_data
+  label: Input is a mesh BSS
+  dtype: bool
+  default: 'False'
+inputs:
+- label: in
+  domain: message
+outputs:
+- label: out
+  domain: message
+  optional: true
+- label: events
+  domain: message
+  optional: true
+file_format: 1
