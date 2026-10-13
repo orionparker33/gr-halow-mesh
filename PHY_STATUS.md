@@ -15,9 +15,11 @@ modes. It is not yet a complete standards-conformant, real-time PHY receiver.
 - Detects S1G training fields, estimates timing and carrier offset, equalizes
   with the 1/2/4/8 MHz LTF, decodes SIG with CRC, BCC data and interleaver,
   descrambles the PSDU, and emits only MPDUs with a valid FCS.
-- Supports `S1G_1M` at 1 MHz, including MCS10 repetition, and single-stream
-  BCC `S1G_SHORT` at 2/4/8 MHz. Short GI and aggregation code paths exist but
-  have not passed an independent over-air acceptance test. `S1G_LONG`, LDPC,
+- Supports `S1G_1M` at 1 MHz, including MCS10 repetition, single-stream BCC
+  `S1G_SHORT` at 2/4/8 MHz, and single-user BCC `S1G_LONG` at 2 MHz. The
+  2 MHz long path decodes SIG-A, uses D-LTF/SIG-B for the beam-changeable
+  channel, and applies the same FCS gate to extracted A-MPDU members.
+  Short GI has one independent local 2 MHz MCS1 trial. Wider S1G_LONG, LDPC,
   multi-stream, NDP and 16 MHz are not decoded from IQ. The local MM6108
   supports a maximum 8 MHz channel, although 802.11ah defines 16 MHz.
 - Keeps 802.11s protected data opaque. `mesh_decode` requires an explicit
@@ -28,9 +30,9 @@ modes. It is not yet a complete standards-conformant, real-time PHY receiver.
 | Width | FCS-verified from independent HackRF IQ | Remaining local evidence |
 | --- | --- | --- |
 | 1 MHz | MCS0–7 and MCS10 broadcast probes | All nine modes passed FCS in one bounded local matrix; repeatability and long payloads remain unmeasured. |
-| 2 MHz | MCS0 beacons, MCS1 and MCS3 probes | In a 2 MHz MCS0–7 matrix, MCS2/4/5/6/7 SIG fields decoded but their payloads failed FCS. Cause remains unresolved. |
+| 2 MHz | MCS0–7 broadcast probes; MCS1 short-GI probes; published S1G_SHORT and S1G_LONG frames | A bounded timing search recovered every previously failed MCS2/4/5/6/7 target from the original matrix IQ. Short GI passed for two independently captured probes in one five-send trial. The published S1G_LONG path matched 55 reference MPDUs. |
 | 4 MHz | MCS0–7 probes | All eight modes passed FCS in one bounded local matrix; repeatability and impairment tolerance remain unmeasured. |
-| 8 MHz | MCS0/1/2/3/5/6/7 probes; MCS0 mesh data | In a ten-probe MCS4/5 repeat, all target SIG fields decoded, two MCS5 MPDUs passed FCS, and five MCS4 MPDUs did not. A gain comparison found no matching target SIG. The local TX tool rejects MCS8/9. |
+| 8 MHz | MCS0–7 probes; MCS0 mesh data | A low-gain 916 MHz trial recovered one MCS4 and one MCS5 frame. At intermediate gain the normal CLI recovered another MCS4 and one MCS5; a second MCS5 was recoverable only after shifting the raw window four samples. All newly recovered bodies matched rendered probes. Several CRC-valid probes still failed FCS, so packet-loss performance remains unaccepted. The local TX tool rejects MCS8/9. |
 
 A synchronous private HackRF/MM6108 capture pair had 14 overlapping 8 MHz
 MCS0 data frames and seven overlapping 2 MHz MCS0 beacons. Every one of those
@@ -40,12 +42,13 @@ the preset body after accounting for the sequence number assigned by the TX
 MAC. A valid SIG alone is never published as an MPDU.
 
 A separately published 2 MHz IQ recording by Daniel Estévez provided an
-additional external check. The first two seconds yielded 50 FCS-valid MCS1 MPDUs;
-all 50 matched exact bytes in the author's published decoded PCAP. Run
+additional external check. The first two seconds yielded 116 FCS-valid MPDUs,
+including 55 S1G_LONG frames; all 116 matched exact bytes in the author's
+published decoded PCAP. Run
 `tests/validate_public_iq.py` against the author's extracted ci16_le SigMF
 data and PCAP to repeat this test. The two reference files are linked below
 and are not included in this repository. The GNU Radio complex-stream block
-also produced 50 exact matches. A private 8 MHz MCS7 frame crossing a 50 ms
+also produced 115 exact matches. A private 8 MHz MCS7 frame crossing a 50 ms
 stream-window edge was emitted once at the correct sample offset. At 1 Msps,
 the stream block recovered all nine 1 MHz MCS0–7/10 probes once in 0.881
 seconds for four seconds of recorded channelized IQ. At 4 Msps, it recovered
@@ -62,15 +65,23 @@ device identifiers are stored only in restricted Atlas run directories.
 ## Remaining acceptance work
 
 1. Independent conformance waveforms for every claimed MCS and width,
-   `S1G_SHORT`/`S1G_1M` field variant, guard interval, aggregation, and
-   malformed SIG/FCS. The local preset sender cannot exercise MCS8/9.
+   `S1G_SHORT`/`S1G_1M`/`S1G_LONG` field variant, guard interval, aggregation,
+   and malformed SIG/FCS. The local preset sender cannot exercise MCS8/9.
 2. Measure packet error rate and false-alarm rate versus SNR, CFO, clock
    offset, multipath, clipping, adjacent-channel traffic, and payload size.
-   Resolve the 2 MHz MCS2/4/5/6/7 payload failures and persistent 8 MHz MCS4
-   FCS failures and MCS5 loss rate with a clean, independently received
-   reference before declaring broad MCS4/5 performance. Two MCS5 frames are
-   verified; MCS4 is not.
-3. Add `S1G_LONG`, LDPC, NDP, multi-stream, and 16 MHz only when the receiver
+   Resolve 8 MHz MCS4/5 packet-loss performance with a clean, independently
+   received reference before declaring broad reliability. The previous
+   high-gain 916 MHz capture clipped roughly 66% of active PPDU samples and
+   yielded no FCS-valid MCS4/5 payloads despite six CRC-valid SIGs. At zero
+   LNA/VGA gain, clipping disappeared and one of three MCS4 plus one of three
+   MCS5 probes passed FCS. At intermediate gain, a wider FCS-gated FFT timing
+   search recovered one of three MCS4 and one of three MCS5 probes in the
+   standard CLI pass. A second MCS5 was FCS-valid only after shifting the IQ
+   window by four input samples. Every recovered body matched the rendered
+   preset. This window-phase sensitivity needs quantified EVM and error-rate
+   analysis. The previous 2 MHz MCS2/4/5/6/7 failure was an STF timing
+   alias and is resolved on the original IQ.
+3. Add wider `S1G_LONG`, LDPC, NDP, multi-stream, and 16 MHz only when the receiver
    implementation and independent test source actually support them. These
    are not silently accepted through fallback metadata.
 4. Implement and benchmark sustained 10 Msps Pi 5 operation. The offline CLI
@@ -87,9 +98,36 @@ device identifiers are stored only in restricted Atlas run directories.
    stream result above was slightly slower than recorded duration. Hardware
    overrun detection and lossless live flow control remain unimplemented.
 
+## Format-gap research and acceptance path
+
+| Gap | What the format requires | Current evidence and next acceptance gate |
+| --- | --- | --- |
+| `S1G_LONG` | SIG-A in the omni portion, then D-STF, one or more D-LTFs, SIG-B and data in the beam-changeable portion. SU SIG-B repeats D-LTF1; MU SIG-B carries user information. | **2 MHz SU implemented:** the first two seconds of the external IQ source yield 55 FCS-valid S1G_LONG MPDUs, all exact PCAP matches. The published source exercises MCS4/6/7, traveling pilots, and aggregation. For 4/8 MHz and MU, obtain independent format-labelled IQ plus reference MPDUs, implement the full-band D-LTF and per-user SIG-B/spatial path, and demand exact matches. Do not infer wide or MU support from the 2 MHz result. |
+| NDP | The MAC information is encoded in the PHY signaling field; there is no data field or MPDU FCS to pass through the existing `out` port. | The MM6108 monitor PCAP can expose NDP metadata, but raw-IQ decoding currently rejects NDP SIG. Add a separately typed, CRC-validated PHY-event output with subtype/bit fields and an independent IQ-to-monitor reference. Do not label an NDP as an FCS-verified MPDU. |
+| LDPC | A different FEC encoder/decoder and codeword/shortening/puncturing rules replace the BCC Viterbi path. | SIG currently rejects LDPC. The local MM6108 preset sender cannot generate an independent LDPC fixture; MathWorks' S1G waveform configuration supports BCC only. Secure an independently generated or captured LDPC IQ/MPDU pair, then implement LDPC codeword recovery and test FCS over rates and payload sizes. |
+| Spatial streams, STBC and MU | Additional LTFs and spatial mapping require channel estimates for each stream; STBC needs its own combining path, and MU needs per-user signaling. | The local MM6108 is a one-stream transmitter and HackRF is a one-channel receiver. Obtain coherent multi-channel IQ and independent output for spatial multiplexing; obtain a multi-antenna STBC/MU vector for their separate paths. Preserve explicit SIG rejection meanwhile. |
+| Short guard interval | Data symbol 1 still has a long guard interval; subsequent symbols can use the short interval. | The 2 MHz MCS1 local trial recovered two long-GI and two short-GI broadcast probes with valid FCS and exact frame body (ignoring transmitter-assigned sequence/FCS); one additional submitted short-GI probe was not recovered. Add independent 1/4/8 MHz vectors, long payloads and timing/clock impairments before claiming a general short-GI receiver. |
+| A-MPDU | SIG length becomes a symbol count; each member has a delimiter, alignment/padding and its own MPDU FCS. | Published 2 MHz S1G_LONG aggregated PPDUs yielded exact PCAP members. The parser now preserves earlier FCS-valid members when a later delimiter is corrupt or truncated. A corpus with known multi-member aggregates, malformed intermediate delimiters, and EOF padding is still needed to establish complete extraction at each width. |
+| 8 MHz MCS4/5 and high MCS | 16-QAM 3/4 and 64-QAM 2/3 need accurate wideband channel estimation and sufficiently clean IQ. MCS8/9 use 256-QAM. | MCS4 and MCS5 now have independently captured, FCS-valid, exact-body local probes at 916 MHz. A 66% ADC clipping fraction explained the all-fail high-gain trial; zero/intermediate gain each recovered a subset. A later FFT-origin fallback recovered another MCS4 in the ordinary CLI. One more MCS5 required a four-sample raw-window shift. Quantify EVM and packet loss with a non-overloaded receiver and a simultaneous independent monitor reference. Local MM6108 preset TX rejects MCS8/9; use an independent 256-QAM vector before claiming them. |
+| Impairments and live rate | A practical receiver needs bounded false alarms and packet loss under noise, CFO, clock error, multipath, adjacent traffic and clipping, plus lossless stream handling. | Existing benchmarks are offline and case-specific. Build labelled clean/impairment IQ fixtures with expected MPDUs, measure detection and FCS-verified packet error/false-alarm rates, then test continuous 10 Msps on Pi 5 with explicit dropped-sample counters and backpressure. |
+
+The 2 MHz preamble correction is deliberately FCS-gated: normalized STF
+correlation peaks can fall on several points of a broad plateau. A SIG CRC can
+pass at a periodic timing alias while payload data fails FCS. The receiver now
+tries four bounded preamble origins for 2 MHz and emits only FCS-valid MPDUs.
+This repaired all five failing high-rate probes on the original local matrix
+and 116/116 exact external PCAP matches in a two-second published sample. An
+8 MHz fallback also tests later full-band FFT origins only after the normal
+timing search fails; FCS and an exact probe-body match validated its added
+MCS4 recovery. A separate MCS5 frame remains sensitive to the raw input
+window's resampling phase.
+
 ## Sources and provenance
 
 - [IEEE 802.11ah decoding analysis by Daniel Estévez](https://destevez.net/2025/01/decoding-ieee-802-11ah/) and the linked MIT-licensed notebook supply the 2 MHz training, synchronization, SIG, and BCC basis.
+- [MathWorks S1G PPDU structure](https://www.mathworks.com/help/wlan/gs/s1g-ppdu-structure.html) describes the three preamble formats and the SU/MU long fields; [S1G waveform generation](https://www.mathworks.com/help/wlan/ug/802-11ah-waveform-generation.html) documents traveling pilots; [S1G configuration](https://www.mathworks.com/help/wlan/ref/wlans1gconfig.html) documents short-GI symbol 1 and its BCC-only generator limit.
+- [IEEE P802.11ah/D0.1](https://mentor.ieee.org/802.11/dcn/13/11-13-0500-00-00ah-proposed-tgah-draft-amendment.pdf) describes NDP signaling and optional coding/spatial modes. It is an early draft, not final normative text; verify field details against the current standard before implementing NDP or LDPC.
+- [Morse Micro MM6108 data sheet](https://www.morsemicro.com/resources/datasheets/chips/MM6108_Data_Sheet.pdf) is the primary source for this local chip's 1/2/4/8 MHz, single-stream MCS0–7/10 limits.
 - [Estévez's published IQ archive](https://nas.destevez.net/~daniel/IEEE_802.11ah/) and [decoded PCAP](https://github.com/daniestevez/jupyter_notebooks/blob/master/IEEE_802.11ah/802_11_ah.pcap) supply the external 2 MHz acceptance pair.
 - [gr-ieee802-11ah](https://github.com/irongiant33/gr-ieee802-11ah) is a GPL-3.0-or-later 1 MHz implementation used to cross-check S1G_1M LTF and SIG repetition/interleaving.
 - The [IEEE TGah specification framework](https://ie.u-ryukyu.ac.jp/~wada/system15/11-11-1137-15-00ah-specification-framework-for-tgah%20(2).pdf) and [Keysight 802.11ah signal configuration](https://helpfiles.keysight.com/csg/n7617b/Content/Main/802.11ah%20Signal%20Configuration.htm) describe format and width choices.
