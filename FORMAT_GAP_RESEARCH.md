@@ -138,6 +138,17 @@ and stream benchmarks are useful baselines, not that acceptance test. No
 active undervoltage alert was observed during the synchronized run; historic
 boot-only `get_throttled` bits are not a reason to block this work.
 
+A bounded live 10 Msps HackRF/OsmoSDR graph showed why file replay alone is
+insufficient: its default receive ring printed 38 overflow markers. With 512
+source buffers, two 30-second live trials printed zero overflow markers and
+recorded about 299 million complex samples each. In the first, 55 decoded
+MPDUs exactly matched the independent monitor, but four of 59 monitor data
+frames in the graph interval were absent. A second trial at higher LNA gain
+had substantially different monitor traffic and signal level, so it cannot
+isolate a sensitivity effect. Accept live operation only after a stable
+labelled reference, explicit source drop accounting, and repeatable packet
+loss/false-alarm measurements; zero printed overflows alone is insufficient.
+
 ## Acceptance order
 
 1. Obtain/export independent clean BCC vectors for wide SU long, all GI widths,
