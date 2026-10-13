@@ -6,8 +6,8 @@ import struct
 from .protocol import decode_mpdu
 
 
-def iter_pcap(path, *, mesh_data=False):
-    """Yield (record number, decoded event) for radiotap or raw 802.11 PCAP."""
+def iter_pcap_frames(path):
+    """Yield (record number, MPDU, FCS present, data padded) from classic PCAP."""
     with open(path, "rb") as source:
         header = source.read(24)
         if len(header) != 24:
@@ -59,9 +59,15 @@ def iter_pcap(path, *, mesh_data=False):
                 data_pad = bool(flags & 0x20)
             else:
                 fcs_present = data_pad = False
-            try:
-                event = decode_mpdu(data, fcs_present=fcs_present,
-                                    data_pad=data_pad, mesh_data=mesh_data)
-            except ValueError:
-                continue
-            yield number, event
+            yield number, data, fcs_present, data_pad
+
+
+def iter_pcap(path, *, mesh_data=False):
+    """Yield (record number, decoded event) for radiotap or raw 802.11 PCAP."""
+    for number, frame, fcs_present, data_pad in iter_pcap_frames(path):
+        try:
+            event = decode_mpdu(frame, fcs_present=fcs_present,
+                                data_pad=data_pad, mesh_data=mesh_data)
+        except ValueError:
+            continue
+        yield number, event

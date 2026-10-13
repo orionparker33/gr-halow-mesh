@@ -3,5 +3,6 @@
 from .mesh_decode import mesh_decode
 from .protocol import decode_mpdu
 from .pcap import iter_pcap
+from .pcap_source import pcap_source
 
-__all__ = ["mesh_decode", "decode_mpdu", "iter_pcap"]
+__all__ = ["mesh_decode", "pcap_source", "decode_mpdu", "iter_pcap"]

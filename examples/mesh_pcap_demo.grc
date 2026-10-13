@@ -1,0 +1,41 @@
+options:
+  parameters:
+    author: gr-halow-mesh contributors
+    catch_exceptions: 'True'
+    category: Custom
+    description: Offline radiotap PCAP to 802.11s mesh parser demo
+    generate_options: no_gui
+    id: halow_mesh_pcap_demo
+    output_language: python
+    run: 'True'
+    title: HaLow Mesh PCAP Demo
+  states:
+    coordinate: [8, 8]
+    state: enabled
+blocks:
+- name: halow_mesh_pcap_source_0
+  id: halow_mesh_pcap_source
+  parameters:
+    path: capture.pcap
+  states:
+    coordinate: [80, 80]
+    state: enabled
+- name: halow_mesh_decode_0
+  id: halow_mesh_decode
+  parameters:
+    emit_all: 'False'
+  states:
+    coordinate: [360, 80]
+    state: enabled
+- name: blocks_message_debug_0
+  id: blocks_message_debug
+  parameters:
+    en_uvec: 'True'
+  states:
+    coordinate: [640, 80]
+    state: enabled
+connections:
+- [halow_mesh_pcap_source_0, out, halow_mesh_decode_0, in]
+- [halow_mesh_decode_0, events, blocks_message_debug_0, print]
+metadata:
+  file_format: 1

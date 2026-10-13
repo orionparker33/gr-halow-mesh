@@ -11,9 +11,11 @@ gr_python_install(
     python/halow_mesh/mesh_decode.py
     python/halow_mesh/protocol.py
     python/halow_mesh/pcap.py
+    python/halow_mesh/pcap_source.py
   DESTINATION ${GR_PYTHON_DIR}/gnuradio/halow_mesh
 )
 install(FILES grc/halow_mesh_decode.block.yml
+              grc/halow_mesh_pcap_source.block.yml
         DESTINATION share/gnuradio/grc/blocks)
 install(PROGRAMS apps/halow_mesh_pcap.py DESTINATION bin)
 install(FILES README.md LICENSE DESTINATION share/doc/gr-halow-mesh)

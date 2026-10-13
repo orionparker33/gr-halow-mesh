@@ -37,7 +37,12 @@ class mesh_decode(gr.basic_block):
         else:
             return
         try:
-            event = decode_mpdu(frame, mesh_data=self.mesh_data)
+            fcs_present = pmt.is_dict(metadata) and pmt.to_bool(
+                pmt.dict_ref(metadata, pmt.intern("fcs_present"), pmt.PMT_F))
+            data_pad = pmt.is_dict(metadata) and pmt.to_bool(
+                pmt.dict_ref(metadata, pmt.intern("data_pad"), pmt.PMT_F))
+            event = decode_mpdu(frame, fcs_present=fcs_present,
+                                data_pad=data_pad, mesh_data=self.mesh_data)
         except ValueError:
             return
         if not (event["mesh"] or self.emit_all):

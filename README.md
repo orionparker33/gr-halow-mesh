@@ -1,6 +1,6 @@
 # gr-halow-mesh
 
-GNU Radio message block and PCAP adapter for receive-only analysis of IEEE
+GNU Radio message blocks and PCAP adapter for receive-only analysis of IEEE
 802.11ah (Wi-Fi HaLow) and IEEE 802.11s mesh MAC frames. This is a MAC parser:
 it accepts recovered 802.11 MPDUs and emits structured mesh events. It does
 not demodulate IQ itself or decrypt protected payloads.
@@ -9,22 +9,29 @@ not demodulate IQ itself or decrypt protected payloads.
 
 ```text
 1 MHz IQ -> gr-ieee802-11ah PHY/decode_mac -> MPDU PDU -> mesh_decode
-HaLow monitor radio -> radiotap PCAP -> halow_mesh_pcap.py
+HaLow monitor radio -> radiotap PCAP -> pcap_source -> mesh_decode
+                                    \-> halow_mesh_pcap.py
 ordinary Wi-Fi monitor PCAP -------> halow_mesh_pcap.py
 ```
 
 The 1 MHz IQ path uses the separate
 [gr-ieee802-11ah](https://github.com/irongiant33/gr-ieee802-11ah) GNU Radio
 module. It has a CRC-checked, FCS-stripped MPDU PDU output compatible with
-this project's `in` port. Wider HaLow channels need another PHY receiver,
-such as a monitor-mode HaLow radio. An independent 8 MHz IQ receiver is not
-included.
+this project's `in` port. Wider HaLow channels need another PHY receiver.
+The MM6108 monitor radio has been validated at an 8 MHz operating width with
+a 2 MHz primary channel; its PCAP runs through the GNU Radio PCAP source and
+mesh decoder. An independent 8 MHz IQ receiver is not included.
 
 The GRC block **HaLow / 802.11s Mesh Decode** has message input `in` and
 outputs `out` and `events`. `out` preserves the MPDU and adds a
 `halow_mesh_json` UTF-8 u8vector to its metadata. `events` carries a JSON
 u8vector PDU. By default, only mesh frames are emitted. Set **Emit ordinary
 frames** to include all supported MPDUs.
+
+The GRC block **HaLow / 802.11s PCAP Source** reads classic radiotap or raw
+802.11 PCAP once and publishes recovered MPDUs to its `out` message port.
+Connect it to the decoder's `in` port. Radiotap FCS and data-padding flags
+are carried in PDU metadata, so the decoder checks advertised FCS.
 
 ## Decoded fields
 
@@ -57,8 +64,9 @@ sudo cmake --install build
 Change `python3.13` to the target host's Python ABI directory. CMake installs
 the block in GNU Radio's Python namespace and its YAML in the GRC block tree.
 If GRC does not discover `/usr/local/share/gnuradio/grc/blocks`, set
-`GRC_BLOCKS_PATH` to that directory **and** the system block path. A small
-offline GRC example is in `examples/mesh_message_demo.grc`.
+`GRC_BLOCKS_PATH` to that directory **and** the system block path. Offline GRC examples are in `examples/mesh_message_demo.grc` and
+`examples/mesh_pcap_demo.grc`. Set the latter source block path to a PCAP.
+The graph runs once; the source publishes every record and then stops emitting.
 
 ## PCAP adapter
 
@@ -76,12 +84,14 @@ a mesh BSS; this is not inferred from frequency or nearby beacons.
 
 ## Verification and scope
 
-Parser and message-port integration tests run with CTest. The GRC example
+Parser, PCAP-source, and message-port integration tests run with CTest. The GRC example
 compiles under GNU Radio 3.10. A private two-node HaLow monitor capture was
 cross-checked against TShark: the parser matched all 85 mesh-advertising S1G
 beacons and correctly withheld a mesh-data classification from 420 protected
 QoS frames without mesh-BSS context. An over-the-air 1 MHz IQ-to-MPDU run and
 independent wider-channel IQ decoding are not yet verified by this project.
+The GNU Radio PCAP-source to mesh-decoder graph yielded 85 mesh beacons from
+the first 8 MHz monitor capture and all five from a second 8 MHz capture.
 
 The code is licensed GPL-3.0-or-later; see `LICENSE`. It is not affiliated
 with the Meshtastic project, which uses LoRa rather than IEEE 802.11ah.

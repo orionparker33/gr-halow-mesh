@@ -13,7 +13,7 @@ import zlib
 import pmt
 from gnuradio import blocks, gr
 
-from halow_mesh import decode_mpdu, iter_pcap, mesh_decode
+from halow_mesh import decode_mpdu, iter_pcap, mesh_decode, pcap_source
 
 
 def beacon():
@@ -84,6 +84,33 @@ class TestMeshDecode(unittest.TestCase):
             records = list(iter_pcap(file.name))
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0][1]["mesh_id"], "testmesh")
+
+    def test_pcap_source_graph_with_fcs(self):
+        frame = beacon()
+        packet = (b"\x00\x00\x09\x00\x02\x00\x00\x00\x10" + frame +
+                  zlib.crc32(frame).to_bytes(4, "little"))
+        with tempfile.NamedTemporaryFile() as file:
+            file.write(struct.pack("<IHHIIII", 0xa1b2c3d4, 2, 4, 0, 0, 65535, 127))
+            file.write(struct.pack("<IIII", 0, 0, len(packet), len(packet)))
+            file.write(packet)
+            file.flush()
+            tb = gr.top_block()
+            source = pcap_source(file.name)
+            parser = mesh_decode()
+            sink = blocks.message_debug()
+            tb.msg_connect(source, "out", parser, "in")
+            tb.msg_connect(parser, "events", sink, "store")
+            tb.start()
+            try:
+                deadline = time.monotonic() + 1
+                while sink.num_messages() == 0 and time.monotonic() < deadline:
+                    time.sleep(0.01)
+            finally:
+                tb.stop()
+                tb.wait()
+            self.assertEqual(sink.num_messages(), 1)
+            event = json.loads(bytes(pmt.u8vector_elements(pmt.cdr(sink.get_message(0)))))
+            self.assertEqual(event["mesh_id"], "testmesh")
 
 
 if __name__ == "__main__":
