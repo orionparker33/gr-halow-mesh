@@ -5,7 +5,7 @@ import numpy as np
 import pmt
 from gnuradio import gr
 
-from .phy import decode_iq_window
+from .phy import decode_iq_window, detect_stf_raw
 
 
 def _publish_frame(block, frame, sample_offset):
@@ -80,18 +80,21 @@ class iq_stream_decode(gr.sync_block):
     """
 
     def __init__(self, sample_rate, bandwidth_mhz, offset_hz=0,
-                 window_seconds=.1, overlap_seconds=.03, max_candidates=128):
+                 window_seconds=.1, overlap_seconds=.03, max_candidates=8,
+                 stf_threshold=.75):
         super().__init__(name="iq_stream_decode", in_sig=[np.complex64], out_sig=None)
         self.sample_rate = float(sample_rate)
         self.bandwidth_mhz = int(bandwidth_mhz)
         self.offset_hz = float(offset_hz)
         self.max_candidates = int(max_candidates)
+        self.stf_threshold = float(stf_threshold)
         if (not np.isfinite(self.sample_rate) or self.sample_rate <= 0 or
                 not np.isfinite(self.offset_hz) or self.bandwidth_mhz not in (1,2,4,8) or
                 abs(self.offset_hz)+self.bandwidth_mhz*5e5 > self.sample_rate/2 or
                 not np.isfinite(window_seconds) or not np.isfinite(overlap_seconds) or
                 window_seconds < .05 or overlap_seconds < .03 or
-                window_seconds-overlap_seconds < .01 or self.max_candidates < 1):
+                window_seconds-overlap_seconds < .01 or self.max_candidates < 1 or
+                not np.isfinite(self.stf_threshold) or not 0 < self.stf_threshold <= 1):
             raise ValueError("invalid IQ stream width, rate, offset, window, overlap, or candidate limit")
         self.window_samples = round(window_seconds*self.sample_rate)
         self.overlap_samples = round(overlap_seconds*self.sample_rate)
@@ -110,16 +113,43 @@ class iq_stream_decode(gr.sync_block):
         return True
 
     def _process(self, size):
-        frames = decode_iq_window(self._buffer[:size], self.sample_rate,
-                                  self.bandwidth_mhz, self.offset_hz,
-                                  self.max_candidates)
-        for frame in frames:
-            absolute = self._window_start + frame.sample_offset
-            if any(body == frame.mpdu and abs(absolute-prior) < round(self.sample_rate*.00005)
-                   for prior, body in self._seen):
+        values = self._buffer[:size]
+        if self.sample_rate < 2e6:
+            frames = decode_iq_window(values, self.sample_rate,
+                                      self.bandwidth_mhz, self.offset_hz,
+                                      self.max_candidates)
+            for frame in frames:
+                absolute = self._window_start + frame.sample_offset
+                if any(body == frame.mpdu and abs(absolute-prior) < round(self.sample_rate*.00005)
+                       for prior, body in self._seen):
+                    continue
+                _publish_frame(self, frame, self._window_start)
+                self._seen.append((absolute, frame.mpdu))
+            cutoff = self._window_start + size - self.overlap_samples - round(self.sample_rate*.001)
+            self._seen = [(at, body) for at, body in self._seen if at >= cutoff]
+            return
+        candidates = sorted(detect_stf_raw(values, self.sample_rate,
+                                           self.stf_threshold))
+        deduplicated = []
+        for candidate in candidates:
+            if not deduplicated or candidate-deduplicated[-1] > round(self.sample_rate*.00015):
+                deduplicated.append(candidate)
+        for candidate in deduplicated[:self.max_candidates]:
+            first = max(0, candidate-round(self.sample_rate*.001))
+            last = min(size, candidate+round(self.sample_rate*.06))
+            if last-first < round(self.sample_rate*.001):
                 continue
-            _publish_frame(self, frame, self._window_start)
-            self._seen.append((absolute, frame.mpdu))
+            frames = decode_iq_window(values[first:last], self.sample_rate,
+                                      self.bandwidth_mhz, self.offset_hz,
+                                      self.max_candidates,
+                                      search_duration=min(.003,(last-first)/self.sample_rate))
+            for frame in frames:
+                absolute = self._window_start + first + frame.sample_offset
+                if any(body == frame.mpdu and abs(absolute-prior) < round(self.sample_rate*.00005)
+                       for prior, body in self._seen):
+                    continue
+                _publish_frame(self, frame, self._window_start+first)
+                self._seen.append((absolute, frame.mpdu))
         # Retain only offsets that can appear in the next overlapping window.
         cutoff = self._window_start + size - self.overlap_samples - round(self.sample_rate*.001)
         self._seen = [(at, body) for at, body in self._seen if at >= cutoff]

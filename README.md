@@ -74,8 +74,12 @@ stream, divides it into overlapping bounded windows, and emits the same
 FCS-verified MPDU PDUs. Its default 100 ms window and 30 ms overlap preserve
 supported frames crossing a window edge; its output `sample_offset` is
 relative to stream sample zero. Connect its `out` message port to **HaLow /
-802.11s Mesh Decode**. It decodes inside the GNU Radio work thread and has no
-hardware-overrun detection or sustained real-time guarantee.
+802.11s Mesh Decode**. A raw preamble threshold and maximum candidate count
+bound the search per window. Raising the threshold reduces work on busy
+channels but may miss weak frames; a low candidate cap may drop frames in a
+dense window. At exactly 1 Msps, the 1 MHz path uses full-window detection.
+It decodes inside the GNU Radio work thread and has no hardware-overrun
+detection or sustained real-time guarantee.
 
 The **HaLow / 802.11s PCAP Source** block accepts classic radiotap or raw
 802.11 PCAP and publishes recovered MPDUs to `out`. It can feed the same mesh
@@ -142,14 +146,19 @@ TX tool rejects MCS8/9, so those are not over-air validated. No production
 claim is made for unsupported formats or untested MCS/guard-interval/FEC
 combinations. The first two seconds of Daniel Estévez's separately published
 2 MHz IQ recording yielded 27 FCS-valid MPDUs, all exact matches to the
-published PCAP. A GNU Radio stream graph yielded the same 27 exact matches,
-and a separate 8 MHz MCS7 frame crossing a window edge was emitted once.
+published PCAP. With the sparse preamble scan, a GNU Radio stream graph
+yielded 29 FCS-valid frames, all exact matches to that PCAP; the offline
+scanner yielded 27. A separate 8 MHz MCS7 frame crossing a window edge was
+emitted once.
 `tests/validate_public_iq.py` repeats the offline comparison when
 given the author's extracted ci16_le SigMF data and PCAP; neither is bundled.
 On this Pi 5, a 4.2-second local 8 MHz MCS matrix took 3.4 seconds to scan
 at the default threshold and 1.9 seconds with `--stf-threshold .98`. A busy
 one-second mesh recording took 4.2 and 1.3 seconds respectively. These are
-offline measurements, not a sustained real-time guarantee. See
+offline measurements, not a sustained real-time guarantee. The optimized
+stream graph processed the 4.168-second 8 MHz MCS matrix in 4.14 seconds on
+this Pi and recovered all six verified frames at the default raw-preamble
+threshold. This does not establish lossless live capture. See
 [PHY_STATUS.md](PHY_STATUS.md) for the acceptance matrix and remaining work.
 
 The code is GPL-3.0-or-later; see [LICENSE](LICENSE) and

@@ -28,7 +28,11 @@ parameters:
 - id: max_candidates
   label: Maximum candidates per window
   dtype: int
-  default: 128
+  default: 8
+- id: stf_threshold
+  label: Raw preamble threshold (0-1)
+  dtype: real
+  default: 0.75
 inputs:
 - domain: stream
   dtype: complex
@@ -37,5 +41,5 @@ outputs:
   id: out
 templates:
   imports: from gnuradio import halow_mesh
-  make: halow_mesh.iq_stream_decode(${sample_rate}, ${bandwidth_mhz}, ${offset_hz}, ${window_seconds}, ${overlap_seconds}, ${max_candidates})
+  make: halow_mesh.iq_stream_decode(${sample_rate}, ${bandwidth_mhz}, ${offset_hz}, ${window_seconds}, ${overlap_seconds}, ${max_candidates}, ${stf_threshold})
 file_format: 1
