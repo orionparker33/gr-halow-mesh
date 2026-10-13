@@ -237,7 +237,7 @@ def _soft_demap(symbols, name):
     return out.ravel()
 
 
-def _parse_sig(bits, width):
+def _parse_sig(bits, width, long_format=False):
     if len(bits) != 48 or _crc4(bits[:38]) != sum(int(bits[i]) << (41-i) for i in range(38, 42)):
         raise PhyReject("SIG CRC")
     if np.any(bits[42:48]):
@@ -247,12 +247,15 @@ def _parse_sig(bits, width):
         raise PhyReject("SIG bandwidth mismatch")
     if bits[1] or bits[5] or bits[6] or bits[17]:
         raise PhyReject("STBC, multiple streams, or LDPC unsupported")
-    if not bits[0] or bits[37]:
-        raise PhyReject("S1G_LONG or NDP SIG unsupported")
+    if long_format:
+        if bits[0] or not bits[36]:
+            raise PhyReject("S1G_LONG MU or invalid fixed SIG bit")
+    elif not bits[0] or bits[37]:
+        raise PhyReject("invalid S1G_SHORT or NDP SIG")
     mcs = sum(int(bits[i]) << (i-19) for i in range(19, 23))
     if mcs not in _MCS:
         raise PhyReject("unsupported MCS")
-    if width>2 and bits[36]:
+    if width>2 and (bits[37] if long_format else bits[36]):
         raise PhyReject("wide-channel traveling pilots unsupported")
     aggregation = bool(bits[24])
     length = sum(int(bits[i]) << (i-25) for i in range(25, 34))
@@ -260,8 +263,8 @@ def _parse_sig(bits, width):
         raise PhyReject("excessive length")
     return {
         "mcs": mcs, "length": length, "aggregation": aggregation,
-        "short_gi": bool(bits[16]), "traveling_pilots": bool(bits[36]),
-        "ppdu_format": "S1G_SHORT", "coding": "BCC",
+        "short_gi": bool(bits[16]), "traveling_pilots": bool(bits[37] if long_format else bits[36]),
+        "ppdu_format": "S1G_LONG" if long_format else "S1G_SHORT", "coding": "BCC",
     }
 
 
@@ -334,9 +337,7 @@ def _preamble_2(x, start):
     permutation = (ncbps//16)*(k%16)+k//16
     deinterleaved = sig_syms.reshape(2, ncbps)[:, permutation].ravel()
     bits = _viterbi(deinterleaved.reshape(-1, 2))
-    if long_format:
-        raise PhyReject("S1G_LONG PPDU not yet supported")
-    return start, sto, cfo, h, bits
+    return start, sto, cfo, h, bits, long_format
 
 
 def _unpack_mpdu(bits, sig):
@@ -349,8 +350,12 @@ def _unpack_mpdu(bits, sig):
             delimiter = payload[:32]
             length = sum(int(delimiter[i]) << (i-4) for i in range(4, 16)) + 4096*(int(delimiter[2])+2*int(delimiter[3]))
             if delimiter[1] or _crc8(delimiter[:16]) != int(np.packbits(delimiter[16:24])[0]) or bytes(np.packbits(delimiter[24:32][::-1])) != b"N":
+                if frames:
+                    break  # Preserve earlier members that passed their own FCS.
                 raise PhyReject("A-MPDU delimiter")
             if 32+8*length > len(payload):
+                if frames:
+                    break
                 raise PhyReject("truncated A-MPDU")
             frame = bytes(np.packbits(payload[32:32+8*length].reshape(-1, 8)[:, ::-1]))
             if _fcs_ok(frame):
@@ -381,6 +386,19 @@ def _payload_2(x, start, sto, cfo, h, sig, phase_mode="fit"):
     equalized = []
     pilot_errors = []
     position = start+6*ts
+    if sig["ppdu_format"] == "S1G_LONG":
+        # In single-user S1G_LONG, D-STF precedes D-LTF1 and SIG-B;
+        # SIG-B repeats D-LTF1. The beam-changeable data portion needs its
+        # own channel estimate rather than the omnidirectional LTF1 estimate.
+        dltf = np.array([
+            _fft_symbol(x, position+(j+1)*ts+cp//2, cfo, tu, cp//2+sto)
+            for j in range(2)
+        ])
+        h = h.copy()
+        h[_SUB56+dc] = (dltf[:, _SUB56+dc]*_LTF).mean(axis=0)
+        if np.any(abs(h[_SUB56+dc])<1e-9):
+            raise PhyReject("invalid S1G_LONG beam channel estimate")
+        position += 3*ts
     for j in range(count):
         gi = cp//2 if sig["short_gi"] and j else cp
         cp_offset = gi//2
@@ -585,7 +603,7 @@ def _payload_input_end(refined,sig,width,sample_rate,total_samples):
         raise PhyReject("invalid symbol count")
     # STF/LTF/SIG occupy six 40-us symbols. Include one extra guard
     # interval and 0.2 ms of filter margin beyond the advertised payload.
-    duration=refined/4e6+(6+count)*40e-6+0.0002
+    duration=refined/4e6+(6+count+(3 if sig["ppdu_format"]=="S1G_LONG" else 0))*40e-6+0.0002
     return min(total_samples,max(0,round(duration*sample_rate)))
 
 
@@ -653,7 +671,7 @@ def detect_stf_raw(samples, sample_rate, threshold=.75):
 
 def decode_iq_window(samples, sample_rate, bandwidth_mhz, offset_hz=0,
                      max_candidates=32, search_duration=None):
-    """Decode FCS-checked S1G_SHORT/BCC MPDUs from a bounded complex IQ window.
+    """Decode FCS-checked single-stream BCC MPDUs from bounded complex IQ.
 
     ``samples`` may be complex64/complex128 or Nx2 signed-byte I/Q. The input
     window should include at least 0.5 ms before each candidate PPDU. Long
@@ -700,13 +718,19 @@ def decode_iq_window(samples, sample_rate, bandwidth_mhz, offset_hz=0,
         if examined>=max_candidates:
             break
         examined+=1
-        # The plateau peak is 32 samples after the nominal coarse start.
-        # The STF FFT refines this single hypothesis to sample precision.
-        for delta in (32,):
+        # The normalized STF plateau has no unique maximum: measured peaks
+        # can coincide with the real start or be tens of samples away. The
+        # STF timing estimator has periodic aliases, and even an aliased
+        # LTF/SIG can pass SIG CRC while its data FFTs fail FCS. Try a small
+        # fixed set of preamble origins and accept only FCS-checked MPDUs.
+        # Wide-channel timing uses a separate full-band search below.
+        for delta in ((16,32,0,48) if bandwidth_mhz==2 else (32,)):
             start=max(0,int(peak)-delta)
             try:
-                refined,sto,cfo,h,bits=_preamble_2(sub,start)
-                sig=_parse_sig(bits,bandwidth_mhz)
+                refined,sto,cfo,h,bits,long_format=_preamble_2(sub,start)
+                sig=_parse_sig(bits,bandwidth_mhz,long_format)
+                if long_format and bandwidth_mhz != 2:
+                    raise PhyReject("wide-channel S1G_LONG not yet supported")
                 # Several STF plateau samples converge on the same LTF/SIG.
                 # A false but CRC-valid SIG can otherwise repeat a long FEC
                 # decode for every start in that plateau.
@@ -735,8 +759,15 @@ def decode_iq_window(samples, sample_rate, bandwidth_mhz, offset_hz=0,
                         full=_resample(values[:needed],sample_rate,bandwidth_mhz*1e6,offset_hz)
                         payload_input_len=needed
                     frames=[]
-                    for timing_shift in range(bandwidth_mhz,
-                                              bandwidth_mhz+49,4):
+                    timing_shifts=list(range(bandwidth_mhz,bandwidth_mhz+49,4))
+                    if bandwidth_mhz==8:
+                        # On some 8 MHz SDR captures the duplicated LTF can
+                        # give a CRC-valid SIG while the full-band FFT origin
+                        # is one symbol period farther into the plateau.
+                        # Retry only after the cheap normal search fails;
+                        # every output still needs an MPDU FCS.
+                        timing_shifts.extend(range(58,107,2))
+                    for timing_shift in timing_shifts:
                         full_start=round(refined*bandwidth_mhz/4)+timing_shift
                         try:
                             frames=_payload_wide(full,full_start,cfo_hz,sig,bandwidth_mhz)
