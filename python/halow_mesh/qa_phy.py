@@ -42,6 +42,7 @@ class PhyChecks(unittest.TestCase):
         # A CRC-valid header with a nonzero BCC termination tail must not
         # trigger a costly payload decode or produce an MPDU.
         bits = np.zeros(48, dtype=np.uint8)
+        bits[0] = 1  # S1G_SHORT reserved format bit
         length = 30
         for j in range(9):
             bits[25+j] = (length >> j) & 1
@@ -52,6 +53,15 @@ class PhyChecks(unittest.TestCase):
         bits[47] = 1
         with self.assertRaises(phy.PhyReject):
             phy._parse_sig(bits, 2)
+        bits[47] = 0
+        for invalid_bit in (0, 37):
+            trial = bits.copy()
+            trial[invalid_bit] ^= 1
+            crc = phy._crc4(trial[:38])
+            for j in range(4):
+                trial[38+j] = (crc >> (3-j)) & 1
+            with self.assertRaises(phy.PhyReject):
+                phy._parse_sig(trial, 2)
 
 
 if __name__=="__main__":

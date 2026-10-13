@@ -247,6 +247,8 @@ def _parse_sig(bits, width):
         raise PhyReject("SIG bandwidth mismatch")
     if bits[1] or bits[5] or bits[6] or bits[17]:
         raise PhyReject("STBC, multiple streams, or LDPC unsupported")
+    if not bits[0] or bits[37]:
+        raise PhyReject("S1G_LONG or NDP SIG unsupported")
     mcs = sum(int(bits[i]) << (i-19) for i in range(19, 23))
     if mcs not in _MCS:
         raise PhyReject("unsupported MCS")
@@ -345,7 +347,7 @@ def _unpack_mpdu(bits, sig):
         frames = []
         while len(payload) >= 32:
             delimiter = payload[:32]
-            length = sum(int(delimiter[i]) << (i-4) for i in range(4, 16)) + 4096*sum(int(delimiter[i]) << i for i in range(2, 4))
+            length = sum(int(delimiter[i]) << (i-4) for i in range(4, 16)) + 4096*(int(delimiter[2])+2*int(delimiter[3]))
             if delimiter[1] or _crc8(delimiter[:16]) != int(np.packbits(delimiter[16:24])[0]) or bytes(np.packbits(delimiter[24:32][::-1])) != b"N":
                 raise PhyReject("A-MPDU delimiter")
             if 32+8*length > len(payload):
