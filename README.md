@@ -91,9 +91,13 @@ channels but may miss weak frames; a low candidate cap may drop frames in a
 dense window. At exactly 1 Msps for 1 MHz, or 4 Msps for 4 MHz, the block
 uses full-window detection; this avoids a frequency-shifted SDR center spur
 flooding the coarse preamble candidate list.
-At 8 MHz, when more candidates occur than the configured cap, the block
-prefers candidates whose short spectrum fills the wide channel. This ranking
-does not replace SIG CRC or MPDU FCS.
+At 2 or 8 MHz, when more candidates occur than the configured cap, the block
+prefers candidates whose short spectrum is less concentrated in a 2 MHz slice.
+This avoids spending the budget on hundreds of narrowband spur peaks before
+a real frame. At exactly 2 Msps, burst power breaks the equal occupancy scores.
+At 2 MHz the fine timing search retains at least 16 origins
+around each selected raw peak. Ranking does not replace SIG CRC or MPDU FCS;
+weak frames masked by stronger wideband traffic can still be missed.
 It decodes inside the GNU Radio work thread and has no hardware-overrun
 detection or sustained real-time guarantee.
 For a finite complex-file replay, append at least one configured window of
@@ -175,9 +179,18 @@ A three-send-per-MCS repeat recovered 27/27 exact-body 1 MHz probes and
 correcting the rotating six-pilot phase reference recovered 21/24 on that
 separate capture. The correction also recovered 3/3 exact 480-byte MCS0
 frames, but 0/3 long MCS7 frames. High-MCS 4 MHz packet recovery remains
-unreliable on this local link. These results do not qualify the 1/2/4 MHz
+unreliable on this local link. Moving the 4 MHz transmission to 914 MHz,
+outside the active 924 MHz mesh channel, still recovered only 19/24 short
+probes, including 0/3 MCS4. These results do not qualify the 1/2/4 MHz
 paths for production: format coverage, controlled impairment limits, and
 observable lossless live capture still need acceptance evidence.
+In a separate 3.7-second 480-byte recording, the finite GNU Radio stream
+graph recovered all six 1 MHz frames in 1.3 seconds, all six 2 MHz frames in
+18.4 seconds, and all three FCS-valid 4 MHz MCS0 frames in 5.3 seconds after
+channelization. The 2 MHz result used an eight-candidate coarse cap and
+16-origin fine timing floor; its throughput is too slow for a live claim at
+that sample rate. A separate replay at exactly 2 Msps also recovered 6/6 in
+19.1 graph seconds. Finite file replay used a silent drain window.
 
 At 8 MHz, an initially all-fail MCS4/5 run clipped about 66% of active IQ
 samples. A repeat at zero receiver gain recovered one FCS-valid MCS4 and one
