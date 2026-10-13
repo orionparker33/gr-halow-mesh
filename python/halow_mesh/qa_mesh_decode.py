@@ -129,7 +129,7 @@ class TestMeshDecode(unittest.TestCase):
 
         def measure(signal):
             samples = np.stack((signal.real, signal.imag), axis=1).astype(np.int8)
-            return inspect_iq(samples, 10e6)
+            return inspect_iq(samples, 10e6, 8)
 
         ofdm_result, tone_result, noise_result = map(measure, (ofdm, tone, noise))
         self.assertGreater(ofdm_result["cp_score"], .9)
@@ -137,6 +137,16 @@ class TestMeshDecode(unittest.TestCase):
         self.assertGreater(tone_result["cp_score"], .9)
         self.assertLess(tone_result["effective_fft_bins"], 8)
         self.assertLess(noise_result["cp_score"], .5)
+
+        narrow_result = inspect_iq(
+            np.stack((ofdm.real, ofdm.imag), axis=1).astype(np.int8), 10e6, 2)
+        self.assertLess(narrow_result["selected_band_energy_fraction"], .4)
+        self.assertGreater(ofdm_result["selected_band_energy_fraction"], .8)
+
+        with self.assertRaises(ValueError):
+            inspect_iq(np.zeros((2000, 2), dtype=np.int8), 10e6, 16)
+        wide = inspect_iq(np.zeros((2000, 2), dtype=np.int8), 20e6, 16)
+        self.assertEqual(wide["bandwidth_mhz"], 16)
 
 
 if __name__ == "__main__":

@@ -14,6 +14,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("capture", help="interleaved signed-8-bit I/Q file")
     parser.add_argument("--sample-rate", type=float, required=True, help="complex samples/second")
+    parser.add_argument("--bandwidth-mhz", type=int, required=True, choices=(1, 2, 4, 8, 16),
+                        help="channel width to analyze; 16 MHz needs an independent reference")
+    parser.add_argument("--offset-hz", type=float, default=0,
+                        help="selected channel center relative to recording center")
     parser.add_argument("--start", type=float, required=True, help="window start in seconds")
     parser.add_argument("--duration-ms", type=float, default=4.0,
                         help="window duration in milliseconds, maximum 100")
@@ -28,7 +32,7 @@ def main():
     samples = raw.reshape(-1, 2)[first:first + count]
     if len(samples) != count:
         parser.error("requested window exceeds capture")
-    result = inspect_iq(samples, args.sample_rate)
+    result = inspect_iq(samples, args.sample_rate, args.bandwidth_mhz, args.offset_hz)
     result["peak_seconds"] = round((first + result["sample_offset"]) / args.sample_rate, 7)
     print(json.dumps(result, sort_keys=True))
 

@@ -51,7 +51,7 @@ prove peer establishment or routing success.
 
 ## Build
 
-GNU Radio 3.10, Python 3, and NumPy are required. On Debian-based systems, install
+GNU Radio 3.10, Python 3, NumPy, and SciPy are required. On Debian-based systems, install
 the GNU Radio development package and Python bindings. Build and test:
 
 ```bash
@@ -86,19 +86,25 @@ a mesh BSS; this is not inferred from frequency or nearby beacons.
 ## Raw-IQ development diagnostic
 
 `halow_iq_probe.py` inspects a short signed-8-bit I/Q window for cyclic-prefix
-correlation at the 32 µs S1G useful-symbol duration. It removes local DC bias
-and reports FFT spread so a narrow tone is distinguishable from wideband OFDM.
-For example, at 10 Msps:
+correlation at the 32 µs S1G useful-symbol duration. Select 1, 2, 4, 8, or
+16 MHz with `--bandwidth-mhz` and optionally shift the channel center with
+`--offset-hz`; the tool filters that channel and reports the original IQ
+energy fraction it contained. It removes local DC bias and reports FFT spread
+so a narrow tone is distinguishable from wideband OFDM. For example, at 10 Msps:
 
 ```bash
 halow_iq_probe.py PRIVATE_CAPTURE.cs8 --sample-rate 10000000 \
+  --bandwidth-mhz 8 \
   --start 0.7933 --duration-ms 4
 ```
 
 This is a diagnostic, **not a PHY decoder or packet detector**. A strong
 correlation and many occupied FFT bins can be caused by other OFDM signals;
 only S1G SIG and FCS validation can identify a HaLow frame. The command reads
-the requested window without changing a radio.
+the requested window without changing a radio. At least 20 Msps is needed to
+inspect a centered 16 MHz channel with this tool. The local MM6108 monitor
+radio supports only 1/2/4/8 MHz, so 16 MHz analysis has no hardware reference
+here and is unverified.
 
 ## Verification and scope
 
