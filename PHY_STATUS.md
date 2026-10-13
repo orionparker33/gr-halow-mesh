@@ -48,6 +48,9 @@ and are not included in this repository. The GNU Radio complex-stream block
 produced 29 FCS-valid frames, all exact matches to that PCAP. A private 8 MHz MCS7
 frame crossing a 50 ms stream-window edge was emitted once at the correct
 sample offset.
+The 1 MHz stream path also recovered recorded MCS1 and MCS10 probes after
+channel selection to 1 Msps. A complete 8 MHz IQ-to-mesh GNU Radio graph
+emitted four mesh events from two seconds of the synchronized capture.
 
 The field captures used a 10 Msps HackRF centered at 924 MHz and a Pi 5. The
 radio was returned to PortaPack Mayhem mode, the MM6108 monitor and radiotap

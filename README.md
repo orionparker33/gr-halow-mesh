@@ -150,6 +150,10 @@ published PCAP. With the sparse preamble scan, a GNU Radio stream graph
 yielded 29 FCS-valid frames, all exact matches to that PCAP; the offline
 scanner yielded 27. A separate 8 MHz MCS7 frame crossing a window edge was
 emitted once.
+In a separate real 1 MHz recording, the stream block decoded both MCS1 and
+MCS10 probe frames after selecting their channel at 1 Msps. A complete
+8 MHz IQ stream-to-mesh graph emitted four mesh events from two seconds of
+the synchronized local recording.
 `tests/validate_public_iq.py` repeats the offline comparison when
 given the author's extracted ci16_le SigMF data and PCAP; neither is bundled.
 On this Pi 5, a 4.2-second local 8 MHz MCS matrix took 3.4 seconds to scan

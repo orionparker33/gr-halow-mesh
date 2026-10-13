@@ -6,6 +6,7 @@ import unittest
 import numpy as np
 
 from halow_mesh import phy
+from halow_mesh.iq_decode import iq_stream_decode
 
 
 class PhyChecks(unittest.TestCase):
@@ -37,6 +38,15 @@ class PhyChecks(unittest.TestCase):
             phy.decode_iq_window(samples,8e6,16)
         with self.assertRaises(ValueError):
             phy.decode_iq_window(samples,8e6,8,1e6)
+
+    def test_one_megasample_stream_rate(self):
+        # The sparse raw-STF detector needs at least 2 Msps. A 1 MHz
+        # channel sampled at exactly 1 Msps must use the full-window path.
+        noise=np.random.default_rng(1337).normal(size=120000).astype(np.complex64)
+        block=iq_stream_decode(1e6,1,window_seconds=.1,overlap_seconds=.03)
+        self.assertTrue(block.start())
+        self.assertEqual(block.work([noise],[]),len(noise))
+        self.assertTrue(block.stop())
 
     def test_sig_tail_gate(self):
         # A CRC-valid header with a nonzero BCC termination tail must not
