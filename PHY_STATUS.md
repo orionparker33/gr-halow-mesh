@@ -32,12 +32,14 @@ modes. It is not yet a complete standards-conformant, real-time PHY receiver.
 | 1 MHz | MCS0–7 and MCS10 broadcast probes | All nine modes passed FCS in one bounded local matrix; repeatability and long payloads remain unmeasured. |
 | 2 MHz | MCS0–7 broadcast probes; MCS1 short-GI probes; published S1G_SHORT and S1G_LONG frames | A bounded timing search recovered every previously failed MCS2/4/5/6/7 target from the original matrix IQ. Short GI passed for two independently captured probes in one five-send trial. The published S1G_LONG path matched 55 reference MPDUs. |
 | 4 MHz | MCS0–7 probes | All eight modes passed FCS in one bounded local matrix; repeatability and impairment tolerance remain unmeasured. |
-| 8 MHz | MCS0–7 probes; MCS0 mesh data | A low-gain 916 MHz trial recovered one MCS4 and one MCS5 frame. At intermediate gain the normal CLI recovered another MCS4 and one MCS5; a second MCS5 was recoverable only after shifting the raw window four samples. All newly recovered bodies matched rendered probes. Several CRC-valid probes still failed FCS, so packet-loss performance remains unaccepted. The local TX tool rejects MCS8/9. |
+| 8 MHz | MCS0–7 probes; MCS0 mesh data | A low-gain 916 MHz trial recovered one MCS4 and one MCS5 frame. At intermediate gain the phase-aligned CLI recovered one MCS4 and two MCS5 frames, all with exact rendered bodies. Three of six submitted probes still failed FCS, so packet-loss performance remains unaccepted. The local TX tool rejects MCS8/9. |
 
 A synchronous private HackRF/MM6108 capture pair had 14 overlapping 8 MHz
 MCS0 data frames and seven overlapping 2 MHz MCS0 beacons. Every one of those
 21 raw-IQ decodes matched the separate MM6108 monitor's MPDU bytes, including
-FCS. The verified broadcast probe frames at 1/2/4/8 MHz matched
+FCS. A later 30-second pair recovered 58/58 expected 8 MHz data MPDUs and
+30/30 expected 2 MHz beacons, with exact bytes and no extra 8 MHz frames.
+The verified broadcast probe frames at 1/2/4/8 MHz matched
 the preset body after accounting for the sequence number assigned by the TX
 MAC. A valid SIG alone is never published as an MPDU.
 
@@ -54,7 +56,10 @@ the stream block recovered all nine 1 MHz MCS0–7/10 probes once in 0.881
 seconds for four seconds of recorded channelized IQ. At 4 Msps, it recovered
 all eight 4 MHz MCS0–7 probes in 3.745 seconds for 3.4 seconds of channelized
 IQ. A complete 8 MHz IQ-to-mesh graph emitted four mesh events from two
-seconds of the synchronized capture.
+seconds of the synchronized capture. On a later 30-second 8 MHz complex-file
+replay, the stream block emitted 58/58 exact offline-reference MPDUs in 14.0
+seconds after wideband candidate ranking. The same replay without ranking
+missed a frame hidden behind 200 narrowband preamble impostors in one window.
 
 The field captures used a 10 Msps HackRF centered at 924 MHz and a Pi 5. The
 radio was returned to PortaPack Mayhem mode, the MM6108 monitor and radiotap
@@ -74,25 +79,28 @@ device identifiers are stored only in restricted Atlas run directories.
    high-gain 916 MHz capture clipped roughly 66% of active PPDU samples and
    yielded no FCS-valid MCS4/5 payloads despite six CRC-valid SIGs. At zero
    LNA/VGA gain, clipping disappeared and one of three MCS4 plus one of three
-   MCS5 probes passed FCS. At intermediate gain, a wider FCS-gated FFT timing
-   search recovered one of three MCS4 and one of three MCS5 probes in the
-   standard CLI pass. A second MCS5 was FCS-valid only after shifting the IQ
-   window by four input samples. Every recovered body matched the rendered
-   preset. This window-phase sensitivity needs quantified EVM and error-rate
-   analysis. The previous 2 MHz MCS2/4/5/6/7 failure was an STF timing
+   MCS5 probes passed FCS. At intermediate gain, the phase-aligned CLI
+   recovered one of three MCS4 and two of three MCS5 probes. Every recovered
+   body matched the rendered preset. The remaining 3/6 misses need quantified
+   EVM and error-rate analysis. The previous 2 MHz MCS2/4/5/6/7 failure was an STF timing
    alias and is resolved on the original IQ.
 3. Add wider `S1G_LONG`, LDPC, NDP, multi-stream, and 16 MHz only when the receiver
    implementation and independent test source actually support them. These
    are not silently accepted through fallback metadata.
-4. Implement and benchmark sustained 10 Msps Pi 5 operation. The offline CLI
-   processed a 4.2-second 8 MHz MCS matrix in 3.4 seconds at the sensitive
-   default STF threshold, or 1.9 seconds at threshold .98. On a busy mesh
-   recording it took 4.2 or 1.3 seconds per recorded second respectively.
-   The higher threshold preserved all six verified matrix frames but has not
-   been sensitivity-tested for weak frames. The GNU Radio stream block uses
+4. Benchmark and validate sustained 10 Msps Pi 5 operation. On a busy
+   30-second 8 MHz mesh recording, the sensitive default offline CLI took
+   17.2 seconds using four Pi cores and recovered 58/58 exact monitor frames
+   with no extras. Before lazy IQ conversion and parallel candidate decode,
+   the same pass took 50.6 seconds on one core. This demonstrates offline
+   throughput on one recording, not live source backpressure or losslessness.
+   An optional 8 MHz spectral filter rejected narrowband candidate impostors
+   while retaining these 58 frames and three MCS4/5 probes; it is disabled
+   by default because a weak wideband frame under narrowband interference
+   might be excluded. The GNU Radio stream block uses
    overlapping bounded windows and a raw preamble search inside its work
-   thread. It processed the 4.168-second 8 MHz matrix in 4.14 seconds and
-   recovered all six verified frames. The 1 MHz path at exactly 1 Msps and
+   thread. It processed a 30-second 8 MHz complex-file replay in 14.0
+   seconds and recovered all 58 exact MPDUs after ranking dense candidates
+   by channel occupancy. The 1 MHz path at exactly 1 Msps and
    4 MHz path at exactly 4 Msps use full-window detection to avoid spurious
    preamble candidates from a frequency-shifted SDR center spur. The 4 MHz
    stream result above was slightly slower than recorded duration. Hardware
@@ -108,8 +116,8 @@ device identifiers are stored only in restricted Atlas run directories.
 | Spatial streams, STBC and MU | Additional LTFs and spatial mapping require channel estimates for each stream; STBC needs its own combining path, and MU needs per-user signaling. | The local MM6108 is a one-stream transmitter and HackRF is a one-channel receiver. Obtain coherent multi-channel IQ and independent output for spatial multiplexing; obtain a multi-antenna STBC/MU vector for their separate paths. Preserve explicit SIG rejection meanwhile. |
 | Short guard interval | Data symbol 1 still has a long guard interval; subsequent symbols can use the short interval. | The 2 MHz MCS1 local trial recovered two long-GI and two short-GI broadcast probes with valid FCS and exact frame body (ignoring transmitter-assigned sequence/FCS); one additional submitted short-GI probe was not recovered. Add independent 1/4/8 MHz vectors, long payloads and timing/clock impairments before claiming a general short-GI receiver. |
 | A-MPDU | SIG length becomes a symbol count; each member has a delimiter, alignment/padding and its own MPDU FCS. | Published 2 MHz S1G_LONG aggregated PPDUs yielded exact PCAP members. The parser now preserves earlier FCS-valid members when a later delimiter is corrupt or truncated. A corpus with known multi-member aggregates, malformed intermediate delimiters, and EOF padding is still needed to establish complete extraction at each width. |
-| 8 MHz MCS4/5 and high MCS | 16-QAM 3/4 and 64-QAM 2/3 need accurate wideband channel estimation and sufficiently clean IQ. MCS8/9 use 256-QAM. | MCS4 and MCS5 now have independently captured, FCS-valid, exact-body local probes at 916 MHz. A 66% ADC clipping fraction explained the all-fail high-gain trial; zero/intermediate gain each recovered a subset. A later FFT-origin fallback recovered another MCS4 in the ordinary CLI. One more MCS5 required a four-sample raw-window shift. Quantify EVM and packet loss with a non-overloaded receiver and a simultaneous independent monitor reference. Local MM6108 preset TX rejects MCS8/9; use an independent 256-QAM vector before claiming them. |
-| Impairments and live rate | A practical receiver needs bounded false alarms and packet loss under noise, CFO, clock error, multipath, adjacent traffic and clipping, plus lossless stream handling. | Existing benchmarks are offline and case-specific. Build labelled clean/impairment IQ fixtures with expected MPDUs, measure detection and FCS-verified packet error/false-alarm rates, then test continuous 10 Msps on Pi 5 with explicit dropped-sample counters and backpressure. |
+| 8 MHz MCS4/5 and high MCS | 16-QAM 3/4 and 64-QAM 2/3 need accurate wideband channel estimation and sufficiently clean IQ. MCS8/9 use 256-QAM. | MCS4 and MCS5 have independently captured, FCS-valid, exact-body local probes at 916 MHz. A 66% ADC clipping fraction explained the all-fail high-gain trial; zero/intermediate gain each recovered a subset. The phase-aligned CLI recovers three of six intermediate-gain sends. Quantify EVM and packet loss with a non-overloaded receiver and a simultaneous independent monitor reference. Local MM6108 preset TX rejects MCS8/9; use an independent 256-QAM vector before claiming them. |
+| Impairments and live rate | A practical receiver needs bounded false alarms and packet loss under noise, CFO, clock error, multipath, adjacent traffic and clipping, plus lossless stream handling. | The 30-second offline 8 MHz benchmark met recorded duration and exact monitor matching. Build labelled clean/impairment IQ fixtures with expected MPDUs, measure detection and FCS-verified packet error/false-alarm rates, then test continuous 10 Msps on Pi 5 with explicit dropped-sample counters and backpressure. |
 
 The 2 MHz preamble correction is deliberately FCS-gated: normalized STF
 correlation peaks can fall on several points of a broad plateau. A SIG CRC can
@@ -119,8 +127,8 @@ This repaired all five failing high-rate probes on the original local matrix
 and 116/116 exact external PCAP matches in a two-second published sample. An
 8 MHz fallback also tests later full-band FFT origins only after the normal
 timing search fails; FCS and an exact probe-body match validated its added
-MCS4 recovery. A separate MCS5 frame remains sensitive to the raw input
-window's resampling phase.
+MCS4 recovery. Input windows now align to the channelizer's absolute
+resampling phase, resolving the separate MCS5 window-phase miss.
 
 ## Sources and provenance
 
