@@ -20,7 +20,9 @@ this receiver does not decode. The IQ path supports single-stream BCC
 `S1G_1M` at 1 MHz, `S1G_SHORT` at 2/4/8 MHz, and `S1G_LONG` single-user
 frames at 2 MHz. The 1 MHz path includes
 MCS10 repetition. Code paths for MCS0–7 (and MCS8/9 above 1 MHz) are present;
-see [PHY_STATUS.md](PHY_STATUS.md) for independently verified combinations.
+see [PHY_STATUS.md](PHY_STATUS.md) for independently verified combinations and
+[FORMAT_GAP_RESEARCH.md](FORMAT_GAP_RESEARCH.md) for format-specific closure
+tests and independent vector sources.
 Wider `S1G_LONG`, LDPC, multi-stream PPDUs, and NDP are outside this IQ receiver.
 The MM6108 monitor/PCAP path can still observe formats that its firmware
 decodes. IEEE 802.11s is a MAC mesh mode, so its frames use the ordinary Wi-Fi
