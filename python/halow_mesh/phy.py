@@ -425,13 +425,18 @@ def _payload_2(x, start, sto, cfo, h, sig, phase_mode="fit"):
     return _unpack_mpdu(_descramble(decoded[:-6]), sig)
 
 
-def _payload_wide(x, start, cfo_hz, sig, width):
+def _payload_wide(x, start, cfo_hz, sig, width, phase_mode="fit"):
     """Decode a 4/8 MHz one-stream BCC PPDU from full-band complex IQ."""
     tu = width*32
     cp, ts, dc = tu//4, tu+tu//4, tu//2
     centers = {4: (-32,32), 8: (-96,-32,32,96)}[width]
     active = np.array([k for k in range(-{4:58,8:122}[width], {4:59,8:123}[width]) if abs(k)>1])
     pilots = np.array({4:(-53,-25,-11,11,25,53), 8:(-103,-75,-39,-11,11,39,75,103)}[width])
+    # The six 4 MHz pilot signs rotate each data symbol. Treating them all
+    # as +1 makes their sum approach zero and gives a noisy common-phase
+    # estimate, especially over long PPDUs and at higher MCS. The 8 MHz
+    # pilot path is kept separate until its sequence is independently checked.
+    pilot_psi = np.array((1, 1, 1, -1, -1, 1)) if width == 4 else np.ones(8)
     data_bins = np.array([k for k in active if k not in pilots])
     modulation, num, den = _MCS[sig["mcs"]]
     bits_per_tone = int(np.log2(len(_constellation(modulation))))
@@ -460,6 +465,7 @@ def _payload_wide(x, start, cfo_hz, sig, width):
     hfull[active+dc] = h
     position = start+6*ts
     equalized=[]
+    phase_fit = np.zeros(2)
     for j in range(count):
         gi = cp//2 if sig["short_gi"] and j else cp
         # Two samples after the GI midpoint substantially reduces edge noise
@@ -469,12 +475,26 @@ def _payload_wide(x, start, cfo_hz, sig, width):
         fft = _fft_symbol(x, position+gi//2+offset, cfo, tu, gi//2-offset)
         position += tu+gi
         eq=fft/hfull
+        if width == 4:
+            expected = np.roll(pilot_psi,-j)*_PILOT_POLARITY[(j+2)%len(_PILOT_POLARITY)]
+            measured = eq[pilots+dc]*expected
+            if phase_mode == "fit":
+                residual = np.unwrap(np.angle(measured*np.exp(-1j*np.polyval(phase_fit,pilots))))
+                phase_fit += np.polyfit(pilots,residual,1)
+                correction = np.exp(-1j*np.polyval(phase_fit,data_bins))
+            elif phase_mode == "common":
+                correction = np.exp(-1j*np.angle(np.sum(measured)))
+            else:
+                raise ValueError("unknown pilot phase mode")
+            equalized.extend(eq[data_bins+dc]*correction)
+            continue
         if modulation == "BPSK":
             phase=np.angle(np.sum(eq[data_bins+dc]**2))/2
         else:
             # Pilot-assisted common phase tracking for higher constellations.
             # The pilot signs are validated by FCS before any MPDU is emitted.
-            phase=np.angle(np.sum(eq[pilots+dc]*_PILOT_POLARITY[(j+2)%len(_PILOT_POLARITY)]))
+            phase=np.angle(np.sum(eq[pilots+dc]*np.roll(pilot_psi,-j)*
+                                  _PILOT_POLARITY[(j+2)%len(_PILOT_POLARITY)]))
         equalized.extend(eq[data_bins+dc]*np.exp(-1j*phase))
     soft=_soft_demap(np.asarray(equalized),modulation)
     decoded=_viterbi(_depuncture(_deinterleave(soft,len(data_bins),bits_per_tone,width),(num,den)))
@@ -832,10 +852,14 @@ def decode_iq_window(samples, sample_rate, bandwidth_mhz, offset_hz=0,
                         timing_shifts.extend(range(58,107,2))
                     for timing_shift in timing_shifts:
                         full_start=round(refined*bandwidth_mhz/4)+timing_shift
-                        try:
-                            frames=_payload_wide(full,full_start,cfo_hz,sig,bandwidth_mhz)
-                        except PhyReject:
-                            continue
+                        for phase_mode in (("fit", "common") if bandwidth_mhz == 4 else ("fit",)):
+                            try:
+                                frames=_payload_wide(full,full_start,cfo_hz,sig,
+                                                     bandwidth_mhz,phase_mode)
+                            except PhyReject:
+                                continue
+                            if frames:
+                                break
                         if frames:
                             break
                 for frame in frames:
