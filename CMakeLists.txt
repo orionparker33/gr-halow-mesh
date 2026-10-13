@@ -31,7 +31,7 @@ install(FILES grc/halow_mesh_decode.block.yml
 install(PROGRAMS apps/halow_mesh_pcap.py DESTINATION bin)
 install(PROGRAMS apps/halow_iq_probe.py DESTINATION bin)
 install(PROGRAMS apps/halow_iq_decode.py DESTINATION bin)
-install(FILES README.md LICENSE THIRD_PARTY_NOTICES.md PHY_STATUS.md DESTINATION share/doc/gr-halow-mesh)
+install(FILES README.md LICENSE THIRD_PARTY_NOTICES.md PHY_STATUS.md FORMAT_GAP_RESEARCH.md DESTINATION share/doc/gr-halow-mesh)
 
 if(BUILD_TESTING)
   add_test(NAME halow_mesh_qa
