@@ -201,10 +201,22 @@ submitted intermediate-gain probes still failed FCS, so packet-loss
 performance is not accepted. A longer non-clipping 916 MHz capture contained
 all 30 planned MCS4/5 preambles with CRC-valid SIGs, but the decoder recovered
 only 1/15 MCS4 and 8/15 MCS5 FCS-valid MPDUs. Several failed MCS5 payloads
-had the expected body and errors only in the FCS bytes. Pilot, channel-weight,
-and Viterbi diagnostic variants did not improve the result; the 8 MHz
-receiver path was unchanged. The local TX tool rejects
-MCS8/9, so those are not over-air validated. The first two seconds of
+had the expected body and errors only in the FCS bytes. The corrected
+eight-pilot phase fit leaves this result at 9/30; channel-weight and Viterbi
+diagnostic variants did not improve it.
+
+A separate 12 Msps / 10 MHz-filter 8 MHz matrix initially recovered 3/24
+short probes. Aligning the sparse preamble detector's 8 µs lag to an integer
+sample stride and correcting the rotating eight-pilot reference recovered
+20/24 exact-body, FCS-valid probes: 3/3 each at MCS0/1/2/3/6/7, but only
+1/3 each at MCS4/5. A separate 480-byte MPDU run recovered 3/3 MCS0 frames
+after pilot-based phase tracking removed the BPSK sign ambiguity, while
+MCS7 remained 0/3. Finite GNU Radio stream replays recovered the same 20
+short probes in 3.3 seconds from 4.9 seconds of 8 Msps IQ, and the three
+long MCS0 frames in 3.0 seconds from 2.0 seconds of IQ. The latter misses
+live rate. A 20 Msps trial with a wider receive filter did not resolve the
+high-rate misses. The local TX tool rejects MCS8/9, so those are not
+over-air validated. The first two seconds of
 Daniel Estévez's separately published 2 MHz IQ recording yielded 116
 FCS-valid MPDUs, including 55 `S1G_LONG` frames; all 116 exactly matched the
 published PCAP. The GNU Radio stream graph emitted all 116 exact matches
