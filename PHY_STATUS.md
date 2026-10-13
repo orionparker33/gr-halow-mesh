@@ -30,7 +30,7 @@ modes. It is not yet a complete standards-conformant, real-time PHY receiver.
 | 1 MHz | MCS0, MCS1, MCS10 broadcast probes | Other MCS and long payloads untested. |
 | 2 MHz | MCS0 beacons, MCS1 probe | Other MCS untested. |
 | 4 MHz | MCS0 and MCS3 probes | Other MCS untested. |
-| 8 MHz | MCS0/1/2/3/6/7 probes; MCS0 mesh data | MCS4/5 SIG decoded on one probe each, but payload FCS failed. The follow-up capture showed no matching target SIG amid other traffic. The local TX tool rejects MCS8/9. |
+| 8 MHz | MCS0/1/2/3/5/6/7 probes; MCS0 mesh data | In a ten-probe MCS4/5 repeat, all target SIG fields decoded, two MCS5 MPDUs passed FCS, and five MCS4 MPDUs did not. A gain comparison found no matching target SIG. The local TX tool rejects MCS8/9. |
 
 A synchronous private HackRF/MM6108 capture pair had 14 overlapping 8 MHz
 MCS0 data frames and seven overlapping 2 MHz MCS0 beacons. Every one of those
@@ -59,8 +59,9 @@ device identifiers are stored only in restricted Atlas run directories.
    malformed SIG/FCS. The local preset sender cannot exercise MCS8/9.
 2. Measure packet error rate and false-alarm rate versus SNR, CFO, clock
    offset, multipath, clipping, adjacent-channel traffic, and payload size.
-   Resolve the observed 8 MHz MCS4/5 FCS failures with a clean, independently
-   received reference before marking those combinations verified.
+   Resolve the persistent 8 MHz MCS4 FCS failures and the MCS5 loss rate with
+   a clean, independently received reference before declaring broad MCS4/5
+   performance. Two MCS5 frames are verified; MCS4 is not.
 3. Add `S1G_LONG`, LDPC, NDP, multi-stream, and 16 MHz only when the receiver
    implementation and independent test source actually support them. These
    are not silently accepted through fallback metadata.

@@ -118,10 +118,12 @@ IQ and mesh GNU Radio message blocks.
 ## Validation and limits
 
 On the Pi 5, real IQ yielded FCS-valid MPDUs at 1 MHz MCS0/1/10, 2 MHz
-MCS0/1, 4 MHz MCS0/3, and 8 MHz MCS0/1/2/3/6/7. Twenty-one overlapping
+MCS0/1, 4 MHz MCS0/3, and 8 MHz MCS0/1/2/3/5/6/7. Twenty-one overlapping
 2/8 MHz frames matched an independent MM6108 monitor capture byte for byte.
-The 8 MHz MCS4/5 single-shot probes had valid SIG fields but failed FCS; a
-repeat capture contained no matching target SIG amid other traffic. The local
+The first 8 MHz MCS4/5 probes had valid SIG fields but failed FCS. In a
+bounded repeat, all ten target SIG fields appeared and two MCS5 MPDUs passed
+FCS; none of the five MCS4 MPDUs passed FCS. A later gain comparison captured
+no matching target SIG and did not settle MCS4. The local
 TX tool rejects MCS8/9, so those are not over-air validated. No production
 claim is made for unsupported formats or untested MCS/guard-interval/FEC
 combinations. The first two seconds of Daniel Estévez's separately published
