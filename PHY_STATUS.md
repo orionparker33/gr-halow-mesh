@@ -92,6 +92,13 @@ device identifiers are stored only in restricted Atlas run directories.
    for the 30 probes but not a 30-second capture benchmark. Resolve this
    high-rate loss with labelled waveforms and quantified error analysis.
    Evidence case: `halow-phy-mcs45-replicate-20261013T165828Z` (private IQ).
+   A separate 20-second capture varied the named probe body across 1, 8,
+   16, and 32 SSID bytes. All 24 bursts had the requested MCS and a CRC-valid
+   SIG; the unchanged decoder recovered only two FCS-valid MPDUs, both at
+   eight SSID bytes (one per MCS). Both matched the rendered body. No sampled
+   burst window clipped. This further limits high-rate acceptance but does
+   not by itself separate transmitter quality from receiver error.
+   Evidence case: `halow-mcs45-length-20261013T170948Z` (private IQ).
    The previous 2 MHz MCS2/4/5/6/7 failure was an STF timing
    alias and is resolved on the original IQ.
 3. Add wider `S1G_LONG`, LDPC, NDP, multi-stream, and 16 MHz only when the receiver
