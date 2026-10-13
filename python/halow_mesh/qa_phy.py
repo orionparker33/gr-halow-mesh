@@ -38,6 +38,21 @@ class PhyChecks(unittest.TestCase):
         with self.assertRaises(ValueError):
             phy.decode_iq_window(samples,8e6,8,1e6)
 
+    def test_sig_tail_gate(self):
+        # A CRC-valid header with a nonzero BCC termination tail must not
+        # trigger a costly payload decode or produce an MPDU.
+        bits = np.zeros(48, dtype=np.uint8)
+        length = 30
+        for j in range(9):
+            bits[25+j] = (length >> j) & 1
+        crc = phy._crc4(bits[:38])
+        for j in range(4):
+            bits[38+j] = (crc >> (3-j)) & 1
+        self.assertEqual(phy._parse_sig(bits, 2)["length"], 30)
+        bits[47] = 1
+        with self.assertRaises(phy.PhyReject):
+            phy._parse_sig(bits, 2)
+
 
 if __name__=="__main__":
     unittest.main()

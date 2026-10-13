@@ -51,7 +51,10 @@ halow_mesh_pcap.py verified.pcap --all
 The CLI scans bounded candidate windows; it does not assert that silence or a
 missing frame means an idle channel. A recorded sample clock and center
 frequency must be accurate enough to cover the signal. Keep raw IQ and PCAP
-from assessments private.
+from assessments private. `--pcap` creates a new mode-0600 file and refuses to
+overwrite an existing one. The optional `--stf-threshold` raises the coarse
+preamble threshold above the sensitive default of 0.75. A high threshold can
+speed up a busy recording but can miss weak packets.
 
 ## GNU Radio message block
 
@@ -121,10 +124,15 @@ The 8 MHz MCS4/5 single-shot probes had valid SIG fields but failed FCS; a
 repeat capture contained no matching target SIG amid other traffic. The local
 TX tool rejects MCS8/9, so those are not over-air validated. No production
 claim is made for unsupported formats or untested MCS/guard-interval/FEC
-combinations. The offline decoder took 6.8 seconds for one 4.2-second,
-10 Msps mixed-width 8 MHz recording on this Pi 5; sustained real-time
-operation has not been established. See [PHY_STATUS.md](PHY_STATUS.md) for the
-acceptance matrix and remaining work.
+combinations. The first two seconds of Daniel Estévez's separately published
+2 MHz IQ recording yielded 27 FCS-valid MPDUs, all exact matches to the
+published PCAP. `tests/validate_public_iq.py` repeats that comparison when
+given the author's extracted ci16_le SigMF data and PCAP; neither is bundled.
+On this Pi 5, a 4.2-second local 8 MHz MCS matrix took 3.4 seconds to scan
+at the default threshold and 1.9 seconds with `--stf-threshold .98`. A busy
+one-second mesh recording took 4.2 and 1.3 seconds respectively. These are
+offline measurements, not a sustained real-time guarantee. See
+[PHY_STATUS.md](PHY_STATUS.md) for the acceptance matrix and remaining work.
 
 The code is GPL-3.0-or-later; see [LICENSE](LICENSE) and
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). It is not affiliated with

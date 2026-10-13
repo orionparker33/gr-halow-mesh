@@ -5,6 +5,7 @@
 import argparse
 from datetime import datetime, timezone
 import json
+import os
 import struct
 
 import numpy as np
@@ -28,6 +29,8 @@ def main():
     parser.add_argument("--sample-rate", type=float, required=True)
     parser.add_argument("--bandwidth-mhz", type=int, choices=(1, 2, 4, 8), required=True)
     parser.add_argument("--offset-hz", type=float, default=0)
+    parser.add_argument("--stf-threshold", type=float, default=.75,
+                        help="raw preamble detector threshold (0-1; higher is faster but less sensitive)")
     parser.add_argument("--start", type=float, default=0, help="first recording second")
     parser.add_argument("--duration", type=float, help="seconds to process")
     parser.add_argument("--pcap", help="write radiotap PCAP with verified FCS")
@@ -35,6 +38,8 @@ def main():
     args = parser.parse_args()
     if args.start < 0 or (args.duration is not None and args.duration <= 0):
         parser.error("start must be nonnegative and duration positive")
+    if not 0 < args.stf_threshold <= 1:
+        parser.error("--stf-threshold must be greater than 0 and at most 1")
     if args.pcap and not args.start_utc:
         parser.error("--pcap requires --start-utc for packet timestamps")
     epoch = 0.0
@@ -54,7 +59,13 @@ def main():
         parser.error("requested interval is outside capture")
     scan_step = round(0.5*args.sample_rate)
     scan_overlap = round(0.001*args.sample_rate)
-    output = open(args.pcap, "wb") if args.pcap else None
+    output = None
+    if args.pcap:
+        try:
+            fd = os.open(args.pcap, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            output = os.fdopen(fd, "wb")
+        except OSError as exc:
+            parser.error(f"cannot create new private PCAP: {exc}")
     if output:
         output.write(_pcap_header())
     seen = []
@@ -63,7 +74,8 @@ def main():
         candidates=[]
         for pos in range(first,last,scan_step):
             end=min(pos+scan_step+scan_overlap,last)
-            candidates.extend(pos+peak for peak in detect_stf_raw(raw[pos:end],args.sample_rate))
+            candidates.extend(pos+peak for peak in detect_stf_raw(
+                raw[pos:end],args.sample_rate,args.stf_threshold))
         deduplicated=[]
         for candidate in sorted(candidates):
             if not deduplicated or candidate-deduplicated[-1]>round(args.sample_rate*0.00015):

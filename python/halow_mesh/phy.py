@@ -240,6 +240,8 @@ def _soft_demap(symbols, name):
 def _parse_sig(bits, width):
     if len(bits) != 48 or _crc4(bits[:38]) != sum(int(bits[i]) << (41-i) for i in range(38, 42)):
         raise PhyReject("SIG CRC")
+    if np.any(bits[42:48]):
+        raise PhyReject("SIG BCC tail")
     bandwidth_code = sum(int(bits[i]) << (i-3) for i in range(3, 5))
     if bandwidth_code != {2: 0, 4: 1, 8: 2}[width]:
         raise PhyReject("SIG bandwidth mismatch")
@@ -619,6 +621,8 @@ def detect_stf_raw(samples, sample_rate, threshold=.75):
         raise ValueError("raw STF detector needs at least 2 Msps")
     values=np.asarray(samples)
     if values.ndim==2 and values.shape[1]==2:
+        if values.dtype==np.uint8:
+            values=values.view(np.int8)
         values=values.astype(np.float32)
         values=values[:,0]+1j*values[:,1]
     if values.ndim!=1 or not np.iscomplexobj(values):
@@ -648,12 +652,18 @@ def decode_iq_window(samples, sample_rate, bandwidth_mhz, offset_hz=0,
     window should include at least 0.5 ms before each candidate PPDU. Long
     recordings should be fed as overlapping bounded windows.
     """
+    if not np.isfinite(sample_rate) or sample_rate<=0 or not np.isfinite(offset_hz):
+        raise ValueError("sample rate and offset must be finite")
+    if max_candidates<1:
+        raise ValueError("max_candidates must be positive")
     if bandwidth_mhz not in (1,2,4,8):
         raise ValueError("this receiver supports 1, 2, 4, or 8 MHz")
     if sample_rate < bandwidth_mhz*1e6 or abs(offset_hz)+bandwidth_mhz*0.5e6 > sample_rate*0.5:
         raise ValueError("channel exceeds sample-rate Nyquist span")
     values=np.asarray(samples)
     if values.ndim==2 and values.shape[1]==2:
+        if values.dtype==np.uint8:
+            values=values.view(np.int8)
         values=values.astype(np.float32)
         values=values[:,0]+1j*values[:,1]
     if values.ndim!=1 or not np.iscomplexobj(values):
@@ -683,9 +693,9 @@ def decode_iq_window(samples, sample_rate, bandwidth_mhz, offset_hz=0,
         if examined>=max_candidates:
             break
         examined+=1
-        # STF plateaus span several samples. Five coarse timing hypotheses
-        # cover that plateau; the STF FFT then refines to sample precision.
-        for delta in (32,28,24,20,16):
+        # The plateau peak is 32 samples after the nominal coarse start.
+        # The STF FFT refines this single hypothesis to sample precision.
+        for delta in (32,):
             start=max(0,int(peak)-delta)
             try:
                 refined,sto,cfo,h,bits=_preamble_2(sub,start)
@@ -709,9 +719,8 @@ def decode_iq_window(samples, sample_rate, bandwidth_mhz, offset_hz=0,
                         full=_resample(values[:needed],sample_rate,bandwidth_mhz*1e6,offset_hz)
                         payload_input_len=needed
                     frames=[]
-                    for timing_shift in (bandwidth_mhz,bandwidth_mhz+4,
-                                         bandwidth_mhz+8,bandwidth_mhz+12,
-                                         bandwidth_mhz+16,bandwidth_mhz+20):
+                    for timing_shift in range(bandwidth_mhz,
+                                              bandwidth_mhz+49,4):
                         full_start=round(refined*bandwidth_mhz/4)+timing_shift
                         try:
                             frames=_payload_wide(full,full_start,cfo_hz,sig,bandwidth_mhz)

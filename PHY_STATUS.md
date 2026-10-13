@@ -39,6 +39,13 @@ FCS. The broadcast probe frames at 1/2/4/8 MHz also passed FCS and matched
 the preset body after accounting for the sequence number assigned by the TX
 MAC. A valid SIG alone is never published as an MPDU.
 
+A separately published 2 MHz IQ recording by Daniel Estévez provided an
+additional external check. The first two seconds yielded 27 FCS-valid MPDUs;
+all 27 matched exact bytes in the author's published decoded PCAP. Run
+`tests/validate_public_iq.py` against the author's extracted ci16_le SigMF
+data and PCAP to repeat this test. The two reference files are linked below
+and are not included in this repository.
+
 The field captures used a 10 Msps HackRF centered at 924 MHz and a Pi 5. The
 radio was returned to PortaPack Mayhem mode, the MM6108 monitor and radiotap
 interfaces were down, the injection gate was disabled, and the management
@@ -57,14 +64,18 @@ device identifiers are stored only in restricted Atlas run directories.
 3. Add `S1G_LONG`, LDPC, NDP, multi-stream, and 16 MHz only when the receiver
    implementation and independent test source actually support them. These
    are not silently accepted through fallback metadata.
-4. Implement and benchmark sustained 10 Msps Pi 5 operation. The current
-   offline CLI processed one 4.2-second 8 MHz mixed-width capture in 6.8
-   seconds. GNU Radio integration currently accepts bounded IQ PDUs; it does
-   not expose a continuous stream block or flow-control guarantee.
+4. Implement and benchmark sustained 10 Msps Pi 5 operation. The offline CLI
+   processed a 4.2-second 8 MHz MCS matrix in 3.4 seconds at the sensitive
+   default STF threshold, or 1.9 seconds at threshold .98. On a busy mesh
+   recording it took 4.2 or 1.3 seconds per recorded second respectively.
+   The higher threshold preserved all six verified matrix frames but has not
+   been sensitivity-tested for weak frames. GNU Radio integration accepts
+   bounded IQ PDUs; it has no continuous stream block or flow-control guarantee.
 
 ## Sources and provenance
 
 - [IEEE 802.11ah decoding analysis by Daniel Estévez](https://destevez.net/2025/01/decoding-ieee-802-11ah/) and the linked MIT-licensed notebook supply the 2 MHz training, synchronization, SIG, and BCC basis.
+- [Estévez's published IQ archive](https://nas.destevez.net/~daniel/IEEE_802.11ah/) and [decoded PCAP](https://github.com/daniestevez/jupyter_notebooks/blob/master/IEEE_802.11ah/802_11_ah.pcap) supply the external 2 MHz acceptance pair.
 - [gr-ieee802-11ah](https://github.com/irongiant33/gr-ieee802-11ah) is a GPL-3.0-or-later 1 MHz implementation used to cross-check S1G_1M LTF and SIG repetition/interleaving.
 - The [IEEE TGah specification framework](https://ie.u-ryukyu.ac.jp/~wada/system15/11-11-1137-15-00ah-specification-framework-for-tgah%20(2).pdf) and [Keysight 802.11ah signal configuration](https://helpfiles.keysight.com/csg/n7617b/Content/Main/802.11ah%20Signal%20Configuration.htm) describe format and width choices.
 - See `THIRD_PARTY_NOTICES.md` for software attribution and license terms.
