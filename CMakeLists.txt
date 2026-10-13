@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(gr-halow-mesh VERSION 0.2.0 LANGUAGES C CXX)
+project(gr-halow-mesh VERSION 0.3.0 LANGUAGES C CXX)
 
 find_package(Gnuradio "3.10" REQUIRED)
 find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
@@ -26,6 +26,7 @@ gr_python_install(
 install(FILES grc/halow_mesh_decode.block.yml
               grc/halow_mesh_pcap_source.block.yml
               grc/halow_mesh_iq_decode.block.yml
+              grc/halow_mesh_iq_stream_decode.block.yml
         DESTINATION share/gnuradio/grc/blocks)
 install(PROGRAMS apps/halow_mesh_pcap.py DESTINATION bin)
 install(PROGRAMS apps/halow_iq_probe.py DESTINATION bin)

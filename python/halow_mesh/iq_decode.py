@@ -8,6 +8,24 @@ from gnuradio import gr
 from .phy import decode_iq_window
 
 
+def _publish_frame(block, frame, sample_offset):
+    output_meta = pmt.make_dict()
+    fields = {
+        "fcs_present": pmt.from_bool(True),
+        "fcs_ok": pmt.from_bool(True),
+        "sample_offset": pmt.from_long(sample_offset+frame.sample_offset),
+        "bandwidth_mhz": pmt.from_long(frame.bandwidth_mhz),
+        "mcs": pmt.from_long(frame.mcs),
+        "short_gi": pmt.from_bool(frame.short_gi),
+        "cfo_hz": pmt.from_double(frame.cfo_hz),
+        "ppdu_format": pmt.intern(frame.ppdu_format),
+    }
+    for name, value in fields.items():
+        output_meta = pmt.dict_add(output_meta, pmt.intern(name), value)
+    output = pmt.cons(output_meta, pmt.init_u8vector(len(frame.mpdu), list(frame.mpdu)))
+    block.message_port_pub(pmt.intern("out"), output)
+
+
 class iq_decode(gr.basic_block):
     """Accept complex32 or interleaved signed-byte IQ in a PDU on ``in``.
 
@@ -50,18 +68,79 @@ class iq_decode(gr.basic_block):
         frames = decode_iq_window(samples, self.sample_rate, self.bandwidth_mhz,
                                   self.offset_hz, self.max_candidates)
         for frame in frames:
-            output_meta = pmt.make_dict()
-            fields = {
-                "fcs_present": pmt.from_bool(True),
-                "fcs_ok": pmt.from_bool(True),
-                "sample_offset": pmt.from_long(offset+frame.sample_offset),
-                "bandwidth_mhz": pmt.from_long(frame.bandwidth_mhz),
-                "mcs": pmt.from_long(frame.mcs),
-                "short_gi": pmt.from_bool(frame.short_gi),
-                "cfo_hz": pmt.from_double(frame.cfo_hz),
-                "ppdu_format": pmt.intern(frame.ppdu_format),
-            }
-            for name, value in fields.items():
-                output_meta = pmt.dict_add(output_meta, pmt.intern(name), value)
-            output = pmt.cons(output_meta, pmt.init_u8vector(len(frame.mpdu), list(frame.mpdu)))
-            self.message_port_pub(pmt.intern("out"), output)
+            _publish_frame(self, frame, offset)
+
+
+class iq_stream_decode(gr.sync_block):
+    """Consume a complex stream in overlapping windows and publish MPDU PDUs.
+
+    Processing occurs in the GNU Radio work thread. Hardware sources can lose
+    samples if this receiver falls behind; this block does not claim real-time
+    or lossless capture. The stream must be continuous from sample offset zero.
+    """
+
+    def __init__(self, sample_rate, bandwidth_mhz, offset_hz=0,
+                 window_seconds=.1, overlap_seconds=.03, max_candidates=128):
+        super().__init__(name="iq_stream_decode", in_sig=[np.complex64], out_sig=None)
+        self.sample_rate = float(sample_rate)
+        self.bandwidth_mhz = int(bandwidth_mhz)
+        self.offset_hz = float(offset_hz)
+        self.max_candidates = int(max_candidates)
+        if (not np.isfinite(self.sample_rate) or self.sample_rate <= 0 or
+                not np.isfinite(self.offset_hz) or self.bandwidth_mhz not in (1,2,4,8) or
+                abs(self.offset_hz)+self.bandwidth_mhz*5e5 > self.sample_rate/2 or
+                not np.isfinite(window_seconds) or not np.isfinite(overlap_seconds) or
+                window_seconds < .05 or overlap_seconds < .03 or
+                window_seconds-overlap_seconds < .01 or self.max_candidates < 1):
+            raise ValueError("invalid IQ stream width, rate, offset, window, overlap, or candidate limit")
+        self.window_samples = round(window_seconds*self.sample_rate)
+        self.overlap_samples = round(overlap_seconds*self.sample_rate)
+        if self.window_samples > 10_000_000 or self.window_samples <= self.overlap_samples:
+            raise ValueError("IQ stream window exceeds the bounded buffer")
+        self._buffer = np.empty(self.window_samples, dtype=np.complex64)
+        self._filled = 0
+        self._window_start = 0
+        self._seen = []
+        self.message_port_register_out(pmt.intern("out"))
+
+    def start(self):
+        self._filled = 0
+        self._window_start = 0
+        self._seen = []
+        return True
+
+    def _process(self, size):
+        frames = decode_iq_window(self._buffer[:size], self.sample_rate,
+                                  self.bandwidth_mhz, self.offset_hz,
+                                  self.max_candidates)
+        for frame in frames:
+            absolute = self._window_start + frame.sample_offset
+            if any(body == frame.mpdu and abs(absolute-prior) < round(self.sample_rate*.00005)
+                   for prior, body in self._seen):
+                continue
+            _publish_frame(self, frame, self._window_start)
+            self._seen.append((absolute, frame.mpdu))
+        # Retain only offsets that can appear in the next overlapping window.
+        cutoff = self._window_start + size - self.overlap_samples - round(self.sample_rate*.001)
+        self._seen = [(at, body) for at, body in self._seen if at >= cutoff]
+
+    def work(self, input_items, output_items):
+        values = input_items[0]
+        position = 0
+        while position < len(values):
+            take = min(len(values)-position, self.window_samples-self._filled)
+            self._buffer[self._filled:self._filled+take] = values[position:position+take]
+            self._filled += take
+            position += take
+            if self._filled == self.window_samples:
+                self._process(self.window_samples)
+                self._buffer[:self.overlap_samples] = self._buffer[-self.overlap_samples:].copy()
+                self._window_start += self.window_samples-self.overlap_samples
+                self._filled = self.overlap_samples
+        return len(values)
+
+    def stop(self):
+        if self._filled >= round(self.sample_rate*.001):
+            self._process(self._filled)
+        self._filled = 0
+        return True

@@ -1,0 +1,56 @@
+options:
+  parameters:
+    author: gr-halow-mesh contributors
+    catch_exceptions: 'True'
+    category: Custom
+    description: Complex32 HaLow IQ file to FCS-verified mesh events
+    generate_options: no_gui
+    id: halow_mesh_iq_stream_demo
+    output_language: python
+    run: 'True'
+    title: HaLow IQ Stream Decode Demo
+  states:
+    coordinate: [8, 8]
+    state: enabled
+blocks:
+- name: blocks_file_source_0
+  id: blocks_file_source
+  parameters:
+    file: '"/tmp/halow-complex32.iq"'
+    type: complex
+    repeat: 'False'
+  states:
+    coordinate: [80, 80]
+    state: enabled
+- name: halow_mesh_iq_stream_decode_0
+  id: halow_mesh_iq_stream_decode
+  parameters:
+    sample_rate: '10000000'
+    bandwidth_mhz: '8'
+    offset_hz: '0'
+    window_seconds: '0.1'
+    overlap_seconds: '0.03'
+    max_candidates: '128'
+  states:
+    coordinate: [360, 80]
+    state: enabled
+- name: halow_mesh_decode_0
+  id: halow_mesh_decode
+  parameters:
+    emit_all: 'True'
+  states:
+    coordinate: [640, 80]
+    state: enabled
+- name: blocks_message_debug_0
+  id: blocks_message_debug
+  parameters:
+    en_uvec: 'True'
+  states:
+    coordinate: [920, 80]
+    state: enabled
+connections:
+- [blocks_file_source_0, '0', halow_mesh_iq_stream_decode_0, '0']
+- [halow_mesh_iq_stream_decode_0, out, halow_mesh_decode_0, in]
+- [halow_mesh_decode_0, events, blocks_message_debug_0, print]
+metadata:
+  file_format: 1

@@ -9,6 +9,7 @@ its 802.11 FCS passes. It never transmits or decrypts protected payloads.
 ```text
 signed-byte IQ file --> halow_iq_decode.py --> FCS-verified radiotap PCAP
 bounded IQ PDU ------> HaLow S1G IQ Decode --> HaLow / 802.11s Mesh Decode
+complex IQ stream ---> HaLow S1G IQ Stream Decode --> Mesh Decode
 HaLow monitor PCAP --> HaLow / 802.11s PCAP Source --> Mesh Decode
 ordinary Wi-Fi PCAP -------------------------> halow_mesh_pcap.py
 ```
@@ -56,7 +57,7 @@ overwrite an existing one. The optional `--stf-threshold` raises the coarse
 preamble threshold above the sensitive default of 0.75. A high threshold can
 speed up a busy recording but can miss weak packets.
 
-## GNU Radio message block
+## GNU Radio IQ blocks
 
 The GRC block **HaLow S1G IQ Decode** accepts a bounded IQ PDU on `in` with a
 `c32vector` of complex samples or a `u8vector` of interleaved signed-byte IQ.
@@ -66,7 +67,15 @@ The output `out` is a u8vector MPDU PDU with `fcs_present`, `fcs_ok`, `mcs`,
 `bandwidth_mhz`, `ppdu_format`, `cfo_hz`, and `sample_offset` metadata. Connect
 it to **HaLow / 802.11s Mesh Decode**. The block expects a caller to segment
 an IQ stream into windows that contain the complete PPDU; it is a message
-block, not a continuous sample-stream source.
+block.
+
+The **HaLow S1G IQ Stream Decode** block accepts a continuous complex32
+stream, divides it into overlapping bounded windows, and emits the same
+FCS-verified MPDU PDUs. Its default 100 ms window and 30 ms overlap preserve
+supported frames crossing a window edge; its output `sample_offset` is
+relative to stream sample zero. Connect its `out` message port to **HaLow /
+802.11s Mesh Decode**. It decodes inside the GNU Radio work thread and has no
+hardware-overrun detection or sustained real-time guarantee.
 
 The **HaLow / 802.11s PCAP Source** block accepts classic radiotap or raw
 802.11 PCAP and publishes recovered MPDUs to `out`. It can feed the same mesh
@@ -113,7 +122,12 @@ Adjust the Python ABI path for another host. GRC definitions install under
 add it to `GRC_BLOCKS_PATH` alongside the system block directory. Offline
 message and PCAP examples are in `examples/`.
 `examples/iq_message_demo.py` feeds one bounded IQ file window through the
-IQ and mesh GNU Radio message blocks.
+IQ and mesh GNU Radio message blocks. `examples/mesh_iq_stream_demo.grc`
+shows a complex32 file source feeding the continuous IQ block and mesh
+decoder; set its file path, sample rate, width, and offset before running it.
+The published-capture acceptance command is
+`python3 tests/validate_public_iq.py DATA.sigmf-data 802_11_ah.pcap --stream`
+after extracting the author's 3.84 Msps ci16_le data from the linked archive.
 
 ## Validation and limits
 
@@ -128,7 +142,9 @@ TX tool rejects MCS8/9, so those are not over-air validated. No production
 claim is made for unsupported formats or untested MCS/guard-interval/FEC
 combinations. The first two seconds of Daniel Estévez's separately published
 2 MHz IQ recording yielded 27 FCS-valid MPDUs, all exact matches to the
-published PCAP. `tests/validate_public_iq.py` repeats that comparison when
+published PCAP. A GNU Radio stream graph yielded the same 27 exact matches,
+and a separate 8 MHz MCS7 frame crossing a window edge was emitted once.
+`tests/validate_public_iq.py` repeats the offline comparison when
 given the author's extracted ci16_le SigMF data and PCAP; neither is bundled.
 On this Pi 5, a 4.2-second local 8 MHz MCS matrix took 3.4 seconds to scan
 at the default threshold and 1.9 seconds with `--stf-threshold .98`. A busy

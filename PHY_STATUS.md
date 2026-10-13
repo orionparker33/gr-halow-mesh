@@ -10,8 +10,8 @@ modes. It is not yet a complete standards-conformant, real-time PHY receiver.
 
 - Accepts signed 8-bit interleaved or complex IQ at an explicit sample rate,
   width, and channel-center offset. It checks Nyquist coverage and truncated
-  input. The CLI scans a recording and the GNU Radio block accepts bounded IQ
-  message PDUs.
+  input. The CLI scans a recording; GNU Radio accepts bounded IQ message PDUs
+  or a complex sample stream segmented into overlapping windows.
 - Detects S1G training fields, estimates timing and carrier offset, equalizes
   with the 1/2/4/8 MHz LTF, decodes SIG with CRC, BCC data and interleaver,
   descrambles the PSDU, and emits only MPDUs with a valid FCS.
@@ -44,7 +44,10 @@ additional external check. The first two seconds yielded 27 FCS-valid MPDUs;
 all 27 matched exact bytes in the author's published decoded PCAP. Run
 `tests/validate_public_iq.py` against the author's extracted ci16_le SigMF
 data and PCAP to repeat this test. The two reference files are linked below
-and are not included in this repository.
+and are not included in this repository. The GNU Radio complex-stream block
+also produced 27 exact matches on that two-second file. A private 8 MHz MCS7
+frame crossing a 50 ms stream-window edge was emitted once at the correct
+sample offset.
 
 The field captures used a 10 Msps HackRF centered at 924 MHz and a Pi 5. The
 radio was returned to PortaPack Mayhem mode, the MM6108 monitor and radiotap
@@ -70,8 +73,10 @@ device identifiers are stored only in restricted Atlas run directories.
    default STF threshold, or 1.9 seconds at threshold .98. On a busy mesh
    recording it took 4.2 or 1.3 seconds per recorded second respectively.
    The higher threshold preserved all six verified matrix frames but has not
-   been sensitivity-tested for weak frames. GNU Radio integration accepts
-   bounded IQ PDUs; it has no continuous stream block or flow-control guarantee.
+   been sensitivity-tested for weak frames. The GNU Radio stream block uses
+   overlapping bounded windows inside its work thread. The public two-second
+   stream test took 3.75 seconds on this Pi. Hardware overrun detection and
+   lossless live flow control remain unimplemented.
 
 ## Sources and provenance
 
