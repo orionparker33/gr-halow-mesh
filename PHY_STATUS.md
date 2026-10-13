@@ -104,7 +104,17 @@ device identifiers are stored only in restricted Atlas run directories.
    4 MHz path at exactly 4 Msps use full-window detection to avoid spurious
    preamble candidates from a frequency-shifted SDR center spur. The 4 MHz
    stream result above was slightly slower than recorded duration. Hardware
-   overrun detection and lossless live flow control remain unimplemented.
+   overrun detection and lossless live flow control remain unimplemented in
+   the block. A live HackRF/OsmoSDR source printed 38 overflow markers with
+   its default ring and delivered 294.5 million samples in 30 seconds.
+   With 512 source buffers it printed zero overflow markers and delivered
+   299.5 million samples in 30 seconds; 55 FCS-valid outputs matched the
+   independent MM6108 monitor exactly, but four of 59 monitor data frames
+   in the graph interval were absent. Three had no raw STF candidate in the
+   recorded IQ and one had candidates but no FCS-valid payload. A repeat at
+   higher LNA gain also printed zero overflows, but the decoded signal level
+   and monitor frame count changed enough to invalidate a gain comparison.
+   Neither run establishes a controlled packet-error rate or live losslessness.
 
 ## Format-gap research and acceptance path
 
@@ -117,7 +127,7 @@ device identifiers are stored only in restricted Atlas run directories.
 | Short guard interval | Data symbol 1 still has a long guard interval; subsequent symbols can use the short interval. | The 2 MHz MCS1 local trial recovered two long-GI and two short-GI broadcast probes with valid FCS and exact frame body (ignoring transmitter-assigned sequence/FCS); one additional submitted short-GI probe was not recovered. Add independent 1/4/8 MHz vectors, long payloads and timing/clock impairments before claiming a general short-GI receiver. |
 | A-MPDU | SIG length becomes a symbol count; each member has a delimiter, alignment/padding and its own MPDU FCS. | Published 2 MHz S1G_LONG aggregated PPDUs yielded exact PCAP members. The parser now preserves earlier FCS-valid members when a later delimiter is corrupt or truncated. A corpus with known multi-member aggregates, malformed intermediate delimiters, and EOF padding is still needed to establish complete extraction at each width. |
 | 8 MHz MCS4/5 and high MCS | 16-QAM 3/4 and 64-QAM 2/3 need accurate wideband channel estimation and sufficiently clean IQ. MCS8/9 use 256-QAM. | MCS4 and MCS5 have independently captured, FCS-valid, exact-body local probes at 916 MHz. A 66% ADC clipping fraction explained the all-fail high-gain trial; zero/intermediate gain each recovered a subset. The phase-aligned CLI recovers three of six intermediate-gain sends. Quantify EVM and packet loss with a non-overloaded receiver and a simultaneous independent monitor reference. Local MM6108 preset TX rejects MCS8/9; use an independent 256-QAM vector before claiming them. |
-| Impairments and live rate | A practical receiver needs bounded false alarms and packet loss under noise, CFO, clock error, multipath, adjacent traffic and clipping, plus lossless stream handling. | The 30-second offline 8 MHz benchmark met recorded duration and exact monitor matching. Build labelled clean/impairment IQ fixtures with expected MPDUs, measure detection and FCS-verified packet error/false-alarm rates, then test continuous 10 Msps on Pi 5 with explicit dropped-sample counters and backpressure. |
+| Impairments and live rate | A practical receiver needs bounded false alarms and packet loss under noise, CFO, clock error, multipath, adjacent traffic and clipping, plus lossless stream handling. | The 30-second offline 8 MHz benchmark met recorded duration and exact monitor matching. A live 10 Msps source needed a 512-buffer ring to avoid OsmoSDR overflow markers in two bounded trials, and four of 59 independently monitored data frames were absent from the first zero-overflow recording. Build labelled clean/impairment IQ fixtures with expected MPDUs, measure detection and FCS-verified packet error/false-alarm rates, then expose explicit dropped-sample counters and test stable continuous capture. |
 
 The 2 MHz preamble correction is deliberately FCS-gated: normalized STF
 correlation peaks can fall on several points of a broad plateau. A SIG CRC can
