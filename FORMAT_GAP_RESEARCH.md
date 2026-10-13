@@ -64,7 +64,12 @@ bytes exactly. At the four NDP times, channelized 100 µs power bins at 923,
 924 and 925 MHz were at most about 1.07 times local background. No distinct
 NDP burst or CRC-validated SIG was obtained; their reported receiver level
 was substantially weaker than the matched local data. A higher-sensitivity,
-non-clipping independent IQ capture or a known NDP MAC waveform is needed.
+non-clipping independent IQ capture or a known NDP MAC waveform is needed. A
+third synchronized receive-only trial raised HackRF gain to LNA24/VGA4 and
+recorded six 2 MHz NDPs in the monitor interval. All six NDP times again
+lacked a distinct 2 MHz burst in the independent IQ. Although this recording
+showed no ADC clipping, it recovered no FCS-valid 8 MHz data frames in a
+five-second check, so it is not an acceptance capture for those frames.
 
 ## LDPC
 
